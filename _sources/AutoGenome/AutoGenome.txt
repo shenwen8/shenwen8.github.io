@@ -1,0 +1,1889 @@
+# AutoGenome
+## AutoGenome介绍
+
+AutoGenome是一个利用AutoML等技术帮助科研工作者在基因组学数据上端到端实现深度学习网络搜索，训练，评估，预测和解释的工具包。
+
+### 背景
+
+深度学习在计算机视觉（CV），自然语言处理（NLP）和语音处理等传统领域中取得了巨大的成功。这些成就极大地鼓舞了基因组的研究人员，尝试使用深度学习技术来解决基因组学的研究问题越来越受欢迎。
+
+但是，基因组学的数据是比较特殊的，跟图像和文本等数据有着明显不同。基因组学数据包括RNA表达值，基因突变状态或来自全基因组的基因拷贝数变异等。传统流行的CNN或RNN网络在此数据的应用是无效的，因为数据中没有空间或时间关系。基因组学数据有其特殊性。几个基因之间可能存在彼此的相互作用，包括激活和抑制，并能组成结构化的层次网络来实现调节生物学的功能。由于基因特征很多，基因之间的关系变得尤为复杂，针对一个研究问题，基因的更多地是非线性，存在交互的作用；并且是一个高纬度的复杂数据问题。而深度学习神经网络对于特征的抽象，以及非线性作用和高维数据的处理，存在一定的优势。
+
+在基因组学研究中，大多数研究者都出自生物学背景，所应用的神经网络结构常常局限于手工设计。在AutoML使用越来越紧密的今天，研究领域同样也驱动着面向医疗基因组学领域的AutoML系统，而AutoGenome正是在这个背景下诞生的。
+
+### 主要特性
+
+- 针对基因组学的数据，MLP（Multilayer Perceptron）结构引起简单灵活的特点常常被使用。AutoGenome有MLP网络结构的搜索策略，通过设定网络层数以及隐藏层神经元个数的搜索空间，通过MoXing的超参搜索方法，根据候选网络结构的表现选出最优的网络结构。
+
+  
+
+- 受ResNet和DenseNet的启发，AutoGenome将跳跃连接引入到基因组学数据中。根据AutoML中CASH的想法（Combined Algorithm Selection and Hyperparameter optimization）把模型选择和超参调优合并为同一个问题，把ResNet和Densenet网络的网络结构通过超参搜索的方式来进行选择，从而可以针对不同的数据选出较优的网络结构。
+
+  
+
+- MLP、ResNet和DenseNet都是基于网络结构的一定先验知识，并且搜索空间仅限于超参搜索中Grid Search的方式；为了使得搜索空间具有更强的灵活性，AutoGenome引入了ENAS（Efficient Neural Architecture Search）。ENAS是NAS的一种，因其创新地把网络结构的参数进行了共享使得，神经网络结构搜索的效率大大得到提升，克服了NAS算力成本巨大而耗时的缺陷。NAS通过强化学习的策略，通过优化策略优化产生子模型结构的控制器模型-LSTM。LSTM模型能够根据预先设定的子模型的网络层数，生成子模型的每一层的大小，以及其中的跳跃了解情况。传统的ENAS结构采用的候选算子常常包括各种卷积等操作，AutoGenome将算子简化为全连接操作，使其能适用于基因组学的数据。
+
+  
+
+- MLP，ResNet， DenseNet 和 ENAS  都是属于监督学习的领域，并且能应用于回归和分类的问题。但除此之外，在生物基因领域，由于数据的维度高，降维等非监督学习也经常被使用。因此AutoGenome在传统VAE的基础上，通过添加跳跃连接，实现了残差全连接VAE网络（residual fully-connected variational auto-encoder， Res-VAE）。在传统的VAE体系中, 编码器通过减少后面每层网络神经元的数量将输入压缩为较小维度的隐变量，解码器从隐变量出发通过增加每层神经元数量的方式重建输入数据。 Res-VAE在编码器和解码器上都添加了跳跃连接，使得网络结构更加多变和灵活。通过最小化重建误差和Kullback-Leibler散度（KLD）误差的总和，Res-VAE从原始数据中学习数据的本质特征，而这些特征存储在隐变量里面，从而实现了降维的目的，也可以用于后续进一步分析。
+
+  
+
+- 在医疗领域中， 科研工作者已经不仅仅满足于模型的效果， 医疗的特殊性使得人们对模型效果的原因产生了更多的思考。深度神经网络的可解释性使得人工智能应用在严谨的医疗领域受限，结果难以解释也让注重因果推断的科学研究无法迅速把深度神经网络应用起来。因此医疗领域的模型可解释性必不可少。如何洞察神经网络模型的黑匣子？目前很多前沿研究已经开展了很多这方面的工作。SHAP(SHapley Additive exPlanations)采用合作博弈的贡献和收益分配来量化每个特征对模型所作出的贡献。为了方便研究人员研究深度学习模型，我们将SHAP的引入了AutoGenome。给定深度学习模型，SHAP将计算每个特征对整体预测的边际贡献，称为SHAP值54。 AutoGenome可以可视化每个基因对预测类别的特征重要性，或每个基因对预测类别的SHAP值分布。这些结果的可视化为深度学习模型可解释性提供了有意义的见解。
+
+## 快速开始
+
+### 安装
+
+```shell
+# Setup environment using conda, env_gpu.yml for GPU server
+conda env create -f env.yml
+conda activate autogenome
+
+#get test data and install autogenome package
+wget https://github.com/EiHealth/EiHealth.github.io/blob/master/data/little_exp.tsv --no-check-certificate
+wget https://github.com/EiHealth/EiHealth.github.io/blob/master/data/little_learning_target.tsv --no-check-certificate
+pip install autogenome*.whl
+```
+
+### 使用
+
+```python
+import autogenome as ag
+
+# create automl instance from a default config file
+automl= ag.auto()
+
+# or from a user-defined config file
+automl= ag.auto("config.json")
+
+# train to get the best hyperparameters and a trained model
+automl.train()
+
+# evaluate 
+automl.evaluate()
+
+# predict
+automl.predict()
+
+# interprete
+automl.explain()
+```
+
+## Config文件配置详解
+
+```javascript
+{
+  "name": "exp1",        // Project name
+
+  "model": {
+    "type": "ResNet",        // [MLP/ResNet/densnet/VAE/enas]
+    "args": {
+        "output_classes": 5,        // Args for Supervised classs
+        "is_regression": false,        //[true/false] whether running a regression
+        "multi_tasks": false        //[true/false] whether running a multi_tasks regression
+    }                
+  },
+
+  "data_train": {        //Needed in automl.train()
+        "type": "DataLoader",        //[DataLoader/BigDataLoader] Selecting data loader, using BigDataLoader when data file is big
+        "args":{
+            "data_dir": "/autogenome/data/",        //Dataset path
+            "features_file": "little_exp.tsv",        //Features file name
+            "labels_file": "little_learning_target.tsv",        //Labels file name
+            "validation_split": 0.2,        //Size of validation dataset, float(portion) 
+            "shuffle": true,        //Shuffle training data before splitting
+            "validation_features": null,        //Validation features file name, needed when validation_split is null
+            "validation_labels": null
+        }
+    },
+
+  "data_evaluate": {                                        //Needed in automl.evaluate()
+        "type": "DataLoader",
+        "args": {
+            "data_dir": "/autogenome/data/",
+            "features_file": "little_exp.tsv",
+            "labels_file": "little_learning_target.tsv"
+        }
+    },
+
+  "data_predict": {        //Needed in automl.predict()
+        "type": "DataLoader",
+        "args": {
+            "data_dir": "/autogenome/data/",
+            "features_file": "little_exp.tsv",
+
+        }
+    },
+
+  "input_fn": {
+        "capacity": 50000,        //An integer. The maximum number of elements in the queue.
+        "enqueue_many": true,        //Whether each tensor in `tensor_list` is a single example.
+        "min_after_dequeue": 0,        //Minimum number elements in the queue after a dequeue, used to ensure a level of mixing of elements.
+        "num_threads": 16,         //The number of threads enqueuing `tensor_list`.
+        "seed":0,        //Seed for the random shuffling within the queue.
+        "allow_smaller_final_batch":true        //(Optional) Boolean. If `True`, allow the final batch to be smaller if there are insufficient items left in the queue.
+
+    },
+
+ // ["trainer"]for MLP/ResNet/DenseNet/res-VAE
+  "trainer": {
+        "hyper_selector": true,        // Whether to use hyper_selector or not
+        "batch_size": 64,        //Batch_size
+        "save_dir": "experiments/",        // Dir to save models, logs and output files
+        "monitor": "accuracy",        // [accuracy/loss] A Tensor. Quantity to be monitored
+        "selected_mode": "max",       //[min/max] mode to select best model when monitor is bigger[max] or smaller[min]
+        "num_gpus": 1,        // Num_gpus
+        "evaluate_every_n_epochs": 1,        //Trigger the evaluation after running n epochs of training.
+        "min_delta": 0.001,        //Minimum change in the monitored quantity to qualify as an improvement, i.e. an absolute change of less than min_delta, will count as no improvement.
+        "patience": 10,        //Number of epochs with no improvement after which learning rate will be decayed.
+        "decay_lr": 10,        //Learning rate is decayed by dividing `decay_lr` when no improvement is detected.
+        "decay_min_delta": 0.001,        //Minimum change in the monitored quantity to qualify as an improvement between last monitored quantity and current monitored quantity with different learning rate.
+        "decay_patience": 1,         //Number of times with decaying learning rate after which training will be stopped.
+        "pre_train_epoch": 10,        // epoches for hyperparams tunning
+        "select_by_eval": true,         //Select best hyper-parameters by eval metric or by train metric. Default is False.
+        "max_steps": 64000,         // Steps for training, will be changed into epoches
+        "auto_batch": false,         //If True, an extra dimension of batch_size will be expanded to the first dimension of the return value from get_split. Default to True.
+        "log_every_n_steps": 10,        //Logging every n steps. Default is 10.
+        "save_model_secs": 0,    // The frequency, in seconds, that a checkpoint is saved using a default checkpoint saver.  `save_model_steps` will added. If both are provided, then only `save_model_secs` is used. Default 600.
+        "init_learning_rate": 0.0001,        // Init rate while hyperparamter search, if set `null`, the init rate will calculated automatically
+        "end_learning_rate": 0.1,        //End rate while hyperparamter search, if set `null`, the end rate will calculated automatically
+        "loss": "cross_entropy",         //["cross_entropy"/"focal_loss"] using "focal_loss" when data are class imbalanced
+        "selected_mode": "max"         //["max"/"min"]  
+    },
+ // ["trainer"] for enas
+  "trainer":{
+        "child_num_layers": 6,        // set the model layers
+        "log_every_n_steps": 10,        //Logging every n steps. Default is 10.
+        "batch_size": 512,       
+        "max_number_of_epoches_in_search": 500,        // num of epoches in search part
+        "max_number_of_epoches_in_fixed": 200,        // num of epoches to train
+        "top_k_candidates": 5,        // number of candidate saved from search and will be trained soon
+        "child_lr_reg": 1e-4,         // the parameter of l2 regularization loss
+        "max_search_channel": 1024,        // the max channel of search space      
+        "save_dir": "experiments/enas/"
+  },
+
+
+  "optimizer": {
+    "type": "Adam"         //[adam/sgd/adadelta/adagrad/adamw/ftrl/momentum/rmsprop/kfac/dynamic_momentum/lamb]
+  },
+
+  // ["evaluator"] for  MLP/ResNet/DenseNet/res-VAE
+  "evaluator": {
+        "checkpoint_path": "default",         // Checkpoint_path to restore
+        "log_every_n_steps": 2,         //Logging every n steps.
+        "output_every_n_steps": 1,        // Logging output every n steps.
+        "max_number_of_steps": 100         // The max number of steps for evaluation
+        "batch_size":64
+
+    },
+
+  // ["evaluator"] for  enas
+  "evaluator":{
+        "checkpoint_path": "default",
+        "log_every_n_steps": 1,
+        "output_every_n_steps": 1,
+        "max_number_of_steps": 30,
+        "batch_size": 100,
+        "arc": null         // The architecture of model, when checkpoint_path is not default
+  },
+
+  // ["predictor"] for  MLP/ResNet/DenseNet/res-VAE
+  "predictor": {
+        "checkpoint_path": "default",
+        "log_every_n_steps": 10,
+        "output_every_n_steps": 1,
+        "max_number_of_steps": 100, 
+        "batch_size":64
+    },
+
+   // ["predictor"] for  enas
+   "predictor"：{
+        "checkpoint_path": "default",
+        "log_every_n_steps": 1,
+        "output_every_n_steps": 1,
+        "max_number_of_steps": 300,
+        "batch_size": 150,
+        "arc": null        // The architecture of model, when checkpoint_path is not default
+    },
+
+  "param_spec": {
+        "type": "origin_params",        // The init model params before hyperparameter search 
+        "args": {
+            "MLP": {
+                "FC1_SIZE": 512,
+                "FC2_SIZE": 512,
+                "FC3_SIZE": 512,
+                "FC4_SIZE": 512,
+                "FC5_SIZE": 512,
+                "FC6_SIZE": 512,
+                "keep_prob": 0.8,
+                "output_nonlinear": null
+            },                   // MLP model params, keep_prob is set into first laryer; output_nonlinear is set at the last layer
+            "ResNet": {
+                "n_latent": 128,
+                "n_blocks": 2,
+                "keep_prob": 0.8,
+                "output_nonlinear": null
+            },                  // ResNet model params
+            "DenseNet": {
+                "growth_rate":32,
+                "bn_size":16,
+                "block_config": [2, 2, 2, 2],
+                "keep_prob": 0.8,
+                "output_nonlinear": null
+            },                  // DenseNet model params
+            "VAE":{
+                "keep_prob":0.6,
+                "start_size":4096,
+                "decay_ratio_list":[0.6, 0.8, 0.8, 0.8]
+            },                  // VAE model params
+            "optimizer_param": {
+                "best_lr": 0.001
+            }                           // Params for optimizer_param
+        }
+    },
+
+  "hyper_param_spec": {
+        "type": "hyper_params",         // Select the model through performance in different combination.
+        "args": {
+            "MLP": {
+                "FC1_SIZE": [ 64, 32, 16, 8],
+                "FC2_SIZE": [ 64, 32, 16, 8],
+                "FC3_SIZE": [ 64, 32, 16, 8],
+                "FC4_SIZE": [ 64, 32, 16, 8],
+                "FC5_SIZE": [ 64, 32, 16, 8],
+                "FC6_SIZE": [ 64, 32, 16, 8],
+                "keep_prob": [ 0.8, 1.0],
+                "output_nonlinear": [null, "relu", "tanh", "sigmoid"]
+            },
+            "ResNet": {
+                "n_latent": [4096, 2048, 1024, 512, 256, 128, 64, 32, 16, 8],
+                "n_blocks": [1, 2, 3, 5],
+                "keep_prob": [0.2, 0.4, 0.6, 0.8, 1.0],
+                "output_nonlinear": [null, "relu", "tanh", "sigmoid"]
+            },
+            "DenseNet": {
+                "growth_rate": [512, 256, 128, 64, 32, 16, 8],
+                "bn_size": [16, 32],
+                "block_config": [[2, 3, 4], [3, 4, 5]],
+                "keep_prob": [0.2, 0.4, 0.6, 0.8, 1.0],
+                "output_nonlinear": [null, "relu", "tanh", "sigmoid"]
+            },
+
+            "VAE":{
+                "keep_prob":[0.2, 0.4, 0.6, 0.8, 1.0],
+                "start_size":[4096, 2048, 1024, 512, 256, 128, 64, 32], 
+                "num_layers":[4,3],
+                "decay_ratio":[0.6, 0.5]
+            }
+            "optimizer_param": {
+
+            }
+        }
+        }
+}
+
+```
+
+## AutoGenome在华为云上使用教程
+
+AutoGenome已经部署医疗智能体平台和华为云ModelArts平台，并可以公开访问。这份教程将端到端演示如何在这两个平台上使用AutoGenome。
+
+### 在ModelArts平台使用AutoGenome
+
+目前AutoGenome在华为云ModelArts平台上可以公开访问。华为云注册用户可以使用免费的NoteBook服务来体验AutoGenome.(免费NoteBook提供1小时GPU使用时长，可以满足大部分基因组自动建模的任务。)
+
+下面展示在ModelArts平台使用免费NoteBook服务完成AutoGenome的端到端训练和推理过程。
+
+#### Step 1: 登录
+
+进入华为云 [ModelArts](https://console.huaweicloud.com/modelarts/?region=cn-north-4&locale=en-us#/dashboard) 平台登录界面，输入用户名和密码，点击  “**登录**”。如果没有ModelArts平台账号，请先注册。
+
+![](../images/tutorial_0.png)
+
+#### Step 2: 进入ModelArts开发环境
+
+点击“**开发环境**”下拉窗口，在页面的顶部点击 “**创建**” 按钮创建一个新的NoteBook环境。
+
+![](../images/tutorial_1.png)
+
+#### Step 3: 选择NoteBook的规格
+
+在新的页面，填写NoteBook的名字，选择“Python2”，“GPU”；在“规格”选择“[Limited-time free] GPU:1*p100 CPU”， 然后点击“下一步”。
+
+![](../images/tutorial_2.png)
+
+在接下来的页面中点击“提交”，创建NoteBook环境的过程。
+
+![](../images/tutorial_3.png)
+
+.点击“返回Notebook列表”.
+
+![](../images/tutorial_4.png)
+
+#### Step 4: 启动NoteBook环境
+
+一般需要花费几秒钟的时间启动NoteBook环境。
+
+![](../images/tutorial_5.png)
+
+当Notebook状态为 “**运行中**”， 可以点击“**打开**”按钮启动Notebook服务。
+
+![](../images/tutorial_6.png)
+
+点击“Open JupyterLab”，将跳转到JupyterLab页面。
+
+![](../images/tutorial_7.png)
+
+#### Step 5:  使用AutoGenome端到端进行AI建模
+
+在JupyterLab, 在“**ModeArts Examples**”中选择AutoGenome notebook例子，点击“**Create a copy**”，就能端到端运行AutoGenome的例子。
+
+![](../images/tutorial_8.png)
+
+#### Step 6: 上传自己的数据体验AutoGenome
+
+使用JupyterLab，点击 “File Browser”菜单栏，使用“Upload”按钮上传自己的数据。如果数据大于100Mb,建议使用OBS上传 (https://support.huaweicloud.com/engineers-modelarts/modelarts_23_0105.html )。
+
+![](../images/tutorial_9.png)
+
+### 在医疗智能体平台使用AutoGenome
+
+华为医疗智能体是集基因组学探索、临床研究和药物发现等领域于一身的AI平台。下面展示在医疗智能体平台体验AutoGenome的端到端流程。
+
+#### Step 1: 登录
+
+ 进入[医疗智能体](https://eihealth.ai/)登录界面（这是一个演示网站，如果您所在公司或者组织购买了医疗智能体平台服务，将会是不同的网址），输入账户和密码后点击“**确认**”。
+
+![](../images/tutorial_10.png)
+
+#### Step 2: 创建Notebook开发环境
+
+点击“**开发环境**” – “**代码集**” – “**AutoGenome-Examples**” – “**创建实例**” 进入到Notebook页面。 
+
+![](../images/tutorial_11.png)
+
+填写创建Notebook所需的参数，点击 “**立即创建**”
+
+![](../images/tutorial_12.png)
+
+Notebook服务创建成功后，点击“**打开**” 进入Notebook页面。
+
+![](../images/tutorial_13.png)
+
+ 
+
+#### Step 3: 打开Notebook中AutoGenome案例
+
+选择“AutoGenome_Example”。
+
+![](../images/tutorial_14.png)
+
+文件夹将包含若干个例子，选择并进入其中一个文件夹
+
+![](../images/tutorial_15.png)
+
+点击其中一个ipynb文件将打开AutoGenome的案例Notebook。
+
+![](../images/tutorial_16.png)
+
+#### Step 4: 使用AutoGenome端到端进行AI建模
+
+Notebook将包含端到端使用AutoGenome的代码，案例覆盖了监督学习和非监督学习。使用者可以使用Notebook案例复现AutoGenome文章的结果。
+
+![](../images/tutorial_17.png)
+
+#### Step 5: 上传自己的数据体验AutoGenome
+
+在工作目录中，点击“**Upload**”按钮。
+
+![](../images/tutorial_18.png)
+
+选择自己的文件后，点击“**Upload**”上传指定的文件，并且根据Notebook案例用自己的数据体验AutoGenome
+
+![](../images/tutorial_19.png)
+
+
+## MLP案例
+
+- [配置文件](##配置文件)
+- [使用](##使用)
+
+
+
+MLP案例以一个二分类任务为例，`features`数据`little_exp.tsv`包含100个samples，23361个features。
+
+```bash
+> wc little_exp.tsv | awk '{print $1}'  # 打印行数
+100
+> sed -n '1,1p' little_exp.tsv | awk '{print NF}'  # 打印列数
+23361
+```
+
+`target`数据为两类，分别为70和30。
+
+```bash
+> grep -c 0 little_learning_target.tsv
+70
+> grep -c 1 little_learning_target.tsv
+30
+```
+
+
+
+### 配置文件
+
+首先，准备配置文件，具体如下所示：
+
+```javascript
+{
+    "name": "mlp_demo",   // Project name
+
+    "model": {
+        "type": "MLP",
+        "args": {
+            "output_classes": 2}   // 分类数目
+    },
+
+    "data_train": {
+        "type": "DataLoader",
+        "args":{
+            "data_dir": "/data_autogenome/data_test",   //数据所在文件夹，推荐使用绝对路径
+            "features_file": "little_exp.tsv",  //features文件名
+            "labels_file": "little_learning_target.tsv",   //target文件名
+            "validation_split": 0.2,   //验证集比例
+            "shuffle": true,   //训练时是否对数据进行打乱操作
+            "delimiter": " "   //数据分隔符，default: '\t'
+        }
+    },
+
+    "data_evaluate": {
+        "type": "DataLoader",
+        "args": {
+            "data_dir": "./data_autogenome/data_test",
+            "features_file": "little_exp.tsv",   //用于单独评估的features文件名
+            "labels_file": "little_learning_target.tsv",  //用于单独评估的target文件名
+            "delimiter": " "
+        }
+    },
+
+    "data_predict": {
+        "type": "DataLoader",
+        "args": {
+            "data_dir": "./data_autogenome/data_test", 
+            "features_file": "little_exp.tsv",   //用于单独预测的features文件名
+            "delimiter": " "
+        }
+    },
+
+    "input_fn": {
+        "num_threads": 16   //读取数据线程数
+    },
+
+    "trainer": {
+        "hyper_selector": true,   //[true/false]，是否进行超参搜索
+        "batch_size": 64,   //每次训练的样本数大小
+        "save_dir": "./experiments",   //保存日志、模型参数、结果输出的文件夹名称
+        "monitor": "accuracy",   //[accuracy/loss/f1_score]，训练过程中在验证集上评估指标
+        "num_gpus": 1,   //机器可使用gpu个数
+        "patience": 20,   //连续多少个epoch后在验证集上效果没有再提升，则停止训练
+        "pre_train_epoch": 10,   //超参搜索阶段，每组参数训练的epoch数目
+        "max_steps": 64000,   //训练最大运行的steps，当patience很大时则会训练max_steps步，max_steps*batch_size/num_samples为对应训练的epoch数
+        "loss": "cross_entropy",
+        "selected_mode": "max"   //[max/min]验证集上评估指标是越大越好还是越小越好
+    },
+
+    "optimizer": {
+        "type": "adam"    //[adam/sgd/adadelta/adagrad/adamw/ftrl/momentum/rmsprop/kfac/dynamic_momentum/lamb]
+    },
+
+    "evaluator": {
+        "max_number_of_steps": 1,
+        "batch_size":100
+
+    },
+
+    "predictor": {
+        "max_number_of_steps": 1,
+        "batch_size":100
+    },
+
+    "explainer": {
+        "type": "Shap",
+        "args": {
+            "plot_type": "bar",  //[bar/dot/violin/layered_violin]
+            "features_name_file": "/data_autogenome/data_test/names_2.txt",  //变量名文件，一列，行数为变量个数
+            "num_samples": 80,   //使用的样本数
+            "ranked_outputs": 20  //输出变量重要性前多少个
+        }
+    },
+
+    "param_spec": {   //模型初始参数，不进行超参搜索时则直接训练该模型
+        "type": "origin_params",
+        "args": {
+            "MLP": {
+                "layers_list": [64， 128],  //网络结构
+                "keep_prob": 1,
+                "output_nonlinear": "sigmoid"
+            },
+            "optimizer_param": {
+                "learning_rate": 0.0001
+            }
+        }
+    },
+
+    "hyper_param_spec": {  //超参搜索空间
+        "type": "hyper_params",
+        "args": {
+            "MLP": {
+                "size_candidates": [128, 64],   //每层网络节点搜索空间
+                "num_layers": [2, 3],  //隐藏网络层数
+                "keep_prob": [0.8, 1.0],
+                "output_nonlinear": [null, "relu", "tanh", "sigmoid"]
+            },
+            "optimizer_param": {
+
+            }
+        }
+}
+}
+
+```
+
+
+
+### 使用
+
+AutoGenome的使用主要包含以下几步：
+
+1. 导入autogenome包
+
+   ```python
+   import autogenome as ag
+   ```
+
+2. 读取配置文件，配置文件如上述所示
+
+   ```python
+   automl = ag.auto("/data_autogenome/data_test/json_hub_simple/densenet_test.json")
+   ```
+
+   配置文件读取成功后，会打印如下日志：
+
+   ```javascript
+   ==========================================================
+   ----------Use the config from 
+   /data_autogenome/data_test/json_hub_simple/mlp_test.json
+   ----------Initialize data_loader class
+   ----------Initialize Optimizer
+   ----------Initialize hyper_param_spec class 
+   ----------Initialize param_spec class 
+   ==========================================================
+   #################################################################################
+   #                                                                               #
+   #                                                                               #
+            Ready to search the best hyper parameters for MLP model            
+   #                                                                               #
+   #                                                                               #
+   #################################################################################
+   ```
+
+   
+
+3. 训练模型。根据配置文件中训练参数进行模型训练，将数据集划分为训练集:验证集为8:2，使用训练集数据进行训练，同时在验证集数据上进行评估，保存在验证集数据上评价指标（trainer.monitor: "accuracy"）更好的模型和参数到相应文件夹（trainer.saver: "./experiments"）中的`models`文件夹中
+
+   ```python
+   automl.train()
+   ```
+
+   训练过程中，先将模型初始化为`param_spec`中参数，然后在超参搜索空间`hyper_param_spec`中进行参数搜索，每一种参数组合会训练一定的epoch数（trainer.pre_train_epoch），挑选结果最好的作为最终模型结构参数并进行进一步训练，训练过程中在验证集上进行评估，当结果更好时保存模型参数，在连续数个epoch（trainer.patience）后在验证集上效果没有再提升，则停止训练。
+
+   训练过程中部分日志如下:
+
+   ```javascript
+   ----------In Hyper & Training Search stage
+   ...
+   Pretraining: search parameter is layers_list, search value is (128, 64)
+   LR_RANGE_TEST From begin_lr 0.000010 To end_lr 0.100000, 
+   Graph was finalized.
+   Running local_init_op.
+   Done running local_init_op.
+   Running will end at step: 10
+   step: 0(global step: 0)	sample/sec: 218.444	loss: 0.805	accuracy: 0.484
+   ...
+   The model and events are saved in experiments/models/mlp_demo/1225_113835/hyper_lr0.08500150000000001_layers_list_(128128)_keep_prob_0.8_output_nonlinear_None
+   Graph was finalized.
+   Running local_init_op.
+   Done running local_init_op.
+   Running will end at step: 64000
+   step: 0(global step: 0)	sample/sec: 86.607	loss: 0.843	accuracy: 0.531
+   [Plateau Metric] step: 1 loss: 147.601 accuracy: 0.266
+   Saving checkpoints for 2 into experiments/models/mlp_demo/1225_113835/hyper_lr0.08500150000000001_layers_list_(128128)_keep_prob_0.8_output_nonlinear_None/best_model.ckpt.
+   [Plateau Metric] step: 3 loss: 64.228 accuracy: 0.266
+   [Plateau Metric] step: 5 loss: 67.668 accuracy: 0.328
+   Saving checkpoints for 6 into experiments/models/mlp_demo/1225_113835/hyper_lr0.08500150000000001_layers_list_(128128)_keep_prob_0.8_output_nonlinear_None/best_model.ckpt.
+   [Plateau Metric] step: 7 loss: 122.216 accuracy: 0.328
+   ...
+   step: 200(global step: 200)	sample/sec: 4496.934	loss: 0.000	accuracy: 1.000
+   [Plateau Metric] step: 201 loss: 0.046 accuracy: 0.953
+   [Plateau Metric] step: 203 loss: 0.034 accuracy: 0.953
+   [Plateau Metric] step: 205 loss: 0.025 accuracy: 1.000
+   Saving checkpoints for 206 into experiments/models/mlp_demo/1225_113835/hyper_lr0.08500150000000001_layers_list_(128128)_keep_prob_0.8_output_nonlinear_None/best_model.ckpt.
+   [Plateau Metric] step: 207 loss: 0.036 accuracy: 1.000
+   ...
+   ```
+
+   
+
+4. 评估模型。根据上步所训练的模型结构及模型参数，评估在`data_evaluate`上表现，分类模型输出`accuracy`值和`confusion matrix`
+
+   ```python
+   automl.evaluate()
+   ```
+
+   部分日志如下所示：
+
+   ```javascript
+   ----------In Evaluation stage
+   Restoring parameters from experiments/models/mlp_demo/1225_113835/hyper_lr0.08500150000000001_layers_list_(128128)_keep_prob_0.8_output_nonlinear_None/best_model.ckpt-206
+   Running local_init_op.
+   Done running local_init_op.
+   loss: 0.005278169643133879	accuracy: 1.0		[1 batches]
+   Confusion matrix plot is 'experiments/output_files/mlp_demo/1225_113835/MLP_confusion_matrix.pdf'
+   ```
+   
+   得到的confusion matrix图如下所示，图数字大小会根据类别数多少进行调整，x轴为真值，y轴为预测值：
+   
+   ![](../images/mlp_confusion_matrix.png)
+   
+
+   
+5. 预测数据。根据第3步所训练的模型结构及模型参数，对于给定features数据，分类问题预测其类别及各个类别的softmax值，并输出到对应的csv文件中
+
+   ```python
+   automl.predict()
+   ```
+
+   日志如下所示：
+
+   ```javascript
+   ----------In Prediction stage 
+   Restoring parameters from experiments/models/mlp_demo/1225_113835/hyper_lr0.08500150000000001_layers_list_(128128)_keep_prob_0.8_output_nonlinear_None/best_model.ckpt-206
+   Running local_init_op.
+   Done running local_init_op.
+   	[1 batches]
+   Predicted values file is "experiments/output_files/mlp_demo/1225_113835/MLP_predicted_result_data_frame.csv"
+   ```
+
+   如日志所示，将输出预测的target文件，文件第一列`predicted_result`，第二列`softmax_value`为各个类别的softmax值。
+
+6. 变量重要性排序。根据第3步所训练的模型结构及模型参数，对变量重要性进行排序，输出各个类别变量重要性，`explainer`中需要指定变量名对应的文件。
+
+   ```python
+   automl.explain()
+   ```
+
+   对模型变量重要性进行排序，输出日志如下：
+
+   ```javascript
+   ----------Initialize Shap class
+   Restoring parameters from experiments/models/mlp_demo/1225_113835/hyper_lr0.08500150000000001_layers_list_(128128)_keep_prob_0.8_output_nonlinear_None/best_model.ckpt-206
+   ----------Computing shap_values with 80  examples and 23361 features
+   importance plot is 'experiments/output_files/mlp_demo/1225_113835/_dot0_feature_importance_summary.pdf'
+   importance plot is 'experiments/output_files/mlp_demo/1225_113835/_dot1_feature_importance_summary.pdf'
+   features orders in all classes is saved in 'experiments/output_files/mlp_demo/1225_113835/_features_orders.csv'
+   importance plot for every classes is 'experiments/output_files/mlp_demo/1225_113835/class_0feature_importance_summary.pdf'
+   importance plot for every classes is 'experiments/output_files/mlp_demo/1225_113835/class_1feature_importance_summary.pdf'
+   importance plot is 'experiments/output_files/mlp_demo/1225_113835/_barTotal_feature_importance_summary.pdf'
+   shap_values every classes is 'experiments/output_files/mlp_demo/1225_113835/_class_0shap_values.csv'
+   shap_values every classes is 'experiments/output_files/mlp_demo/1225_113835/_class_1shap_values.csv'
+   ```
+
+   运行结束后将输出各个类别的变量重要性条图和点图和总的变量重要性图，如下所示：
+
+   总的变量重要性图：
+
+   ![](../images/mlp_total_feature_importance_summary.png)
+
+   class 1变量重要性条图：
+
+   ![](../images/mlp_class1_feature_importance_summary_bar.png)
+
+   class 0变量重要性条图：
+
+   ![](../images/mlp_class0_feature_importance_summary_bar.png)
+
+   class 1变量重要性点图：
+
+   ![](../images/mlp_class1_feature_importance_summary_dot.png)
+
+   class 0变量重要性点图：
+   ![](../images/mlp_class0_feature_importance_summary_dot.png)
+
+
+## RFCN-ResNet案例
+
+- [配置文件](##配置文件)
+- [使用](##使用)
+
+
+
+ResNet案例以一个二分类任务为例，`features`数据`little_exp.tsv`包含100个samples，23361个features。
+
+```bash
+> wc little_exp.tsv | awk '{print $1}'  # 打印行数
+100
+> sed -n '1,1p' little_exp.tsv | awk '{print NF}'  # 打印列数
+23361
+```
+
+`target`数据为两类，分别为70和30。
+
+```bash
+> grep -c 0 little_learning_target.tsv
+70
+> grep -c 1 little_learning_target.tsv
+30
+```
+
+
+
+首先，准备配置文件，具体如下所示：
+
+### 配置文件
+
+```javascript
+{
+    "name": "resnet_demo",  // Project name
+
+    "model": {
+        "type": "ResNet",
+        "args": {
+            "output_classes": 2}  // 分类数目
+    },
+
+    "data_train": {
+        "type": "DataLoader",
+        "args":{
+            "data_dir": "/data_autogenome/data_test",  //数据所在文件夹，推荐使用绝对路径
+            "features_file": "little_exp.tsv",   //features文件名
+            "labels_file": "little_learning_target.tsv",   //target文件名
+            "validation_split": 0.2,  //验证集比例
+            "shuffle": true,  //训练时是否对数据进行打乱操作
+            "delimiter": " "  //数据分隔符，default: '\t'
+        }
+    },
+
+    "data_evaluate": {
+        "type": "DataLoader",
+        "args": {
+            "data_dir": "/data_autogenome/data_test",
+            "features_file": "little_exp.tsv",  //用于单独评估的features文件名
+            "labels_file": "little_learning_target.tsv",  //用于单独评估的target文件名
+            "delimiter": " "
+        }
+    },
+
+    "data_predict": {
+        "type": "DataLoader",
+        "args": {
+            "data_dir": "/data_autogenome/data_test",
+            "features_file": "little_exp.tsv",  //用于单独预测的features文件名
+            "delimiter": " "
+        }
+    },
+
+    "input_fn": {
+        "num_threads": 16  //读取数据线程数
+    },
+
+    "trainer": {
+        "hyper_selector": true,  //[true/false]，是否进行超参搜索
+        "batch_size": 64,  //每次训练的样本数大小
+        "save_dir": "./experiments",  //保存日志、模型参数、结果输出的文件夹名称
+        "monitor": "accuracy",  //[accuracy/loss/f1_score]，训练过程中在验证集上评估指标
+        "num_gpus": 1,  //机器可使用gpu个数
+        "patience": 30,   //连续多少个epoch后在验证集上效果没有再提升，则停止训练
+        "pre_train_epoch": 10,  //超参搜索阶段，每组参数训练的epoch数目
+        "max_steps": 64000,  //训练最大运行的steps，当patience很大时则会训练max_steps步，max_steps*batch_size/num_samples为对应训练的epoch数
+        "loss": "cross_entropy",
+        "selected_mode": "max"   //[max/min]验证集上评估指标是越大越好还是越小越好
+    },
+
+    "optimizer": {
+        "type": "adam"  //[adam/sgd/adadelta/adagrad/adamw/ftrl/momentum/rmsprop/kfac/dynamic_momentum/lamb]
+    },
+
+    "evaluator": {
+        "max_number_of_steps": 10,
+        "batch_size":100
+    },
+
+    "predictor": {
+        "log_every_n_steps": 10,
+        "output_every_n_steps": 1,
+        "max_number_of_steps": 100,
+        "batch_size":100
+    },
+
+    "explainer": {
+        "type": "Explain",
+        "args": {
+            "mode": "shap",  // name of the method to run, "shap", "intgrad", "occlusion"
+            "features_name_file": "/data_autogenome/data_test/names_2.txt",  //变量名文件，一列，行数为变量个数
+            "plot_type": "bar",  //[bar/dot/violin/layered_violin]
+            "num_samples": 80,  //使用的样本数
+            "ranked_outputs": 20  //输出变量重要性前多少个
+        }
+    },
+
+    "param_spec": {   //模型初始参数
+        "type": "origin_params",
+        "args": {
+            "ResNet": {
+                "n_latent": 32,
+                "n_blocks": 2,
+                "keep_prob": 0.8,
+                "output_nonlinear": "sigmoid"
+            },
+            "optimizer_param": {
+                "learning_rate": 0.0001
+            }
+        }
+    },
+
+    "hyper_param_spec": {    //超参搜索空间
+        "type": "hyper_params",
+        "args": {
+            "ResNet": {
+                "n_latent": [128, 64, 32],
+                "n_blocks": [2, 3],
+                "keep_prob": [0.8, 1.0],
+                "output_nonlinear": [null, "relu", "tanh", "sigmoid"]
+            },
+            "optimizer_param": {
+
+            }
+        }
+}
+}
+
+```
+
+
+
+### 使用
+
+AutoGenome的使用主要包含以下几步：
+
+1. 导入autogenome包
+
+   ```python
+   import autogenome as ag
+   ```
+
+2. 读取配置文件，配置文件如上述所示
+
+   ```python
+   automl = ag.auto("/data_autogenome/data_test/json_hub_simple/resnet_test.json")
+   ```
+
+   配置文件读取成功后，会打印如下日志：
+
+   ```javascript
+   ==========================================================
+   ----------Use the config from /data_autogenome/data_test/json_hub_simple/resnet_test.json
+   ----------Initialize data_loader class
+   ----------Initialize Optimizer
+   ----------Initialize hyper_param_spec class 
+   ----------Initialize param_spec class 
+   ==========================================================
+   #################################################################################
+   #                                                                               #
+   #                                                                               #
+            Ready to search the best hyper parameters for ResNet model            
+   #                                                                               #
+   #                                                                               #
+   #################################################################################
+   ```
+
+   
+
+3. 训练模型。根据配置文件中训练参数进行模型训练，将数据集划分为训练集:验证集为8:2，使用训练集数据进行训练，同时在验证集数据上进行评估，保存在验证集数据上评价指标（trainer.monitor: "accuracy"）更好的模型和参数到相应文件夹（trainer.saver: "./experiments"）中的`models`文件夹中
+
+   ```python
+   automl.train()
+   ```
+
+   训练过程中，先将模型初始化为`param_spec`中参数，然后在超参搜索空间`hyper_param_spec`中进行参数搜索，每一种参数组合会训练一定的epoch数（trainer.pre_train_epoch），挑选结果最好的作为最终模型结构参数并进行进一步训练，训练过程中在验证集上进行评估，当结果更好时保存模型参数，在连续数个epoch（trainer.patience）后在验证集上效果没有再提升，则停止训练。
+
+   训练过程中部分日志如下:
+
+   ```javascript
+   ----------In Hyper & Training Search stage 
+   ...
+   Pretraining: search parameter is n_latent, search value is 32
+   LR_RANGE_TEST From begin_lr 0.000010 To end_lr 0.100000, 
+   Graph was finalized.
+   Running local_init_op.
+   Done running local_init_op.
+   Running will end at step: 10
+   step: 0(global step: 0)	sample/sec: 141.683	loss: 0.674	accuracy: 0.609
+   ...
+   [Plateau Metric] step: 163 loss: 1.213 accuracy: 0.828
+   [Plateau Metric] step: 165 loss: 0.726 accuracy: 0.906
+   Saving checkpoints for 166 into experiments/models/resnet_demo/1218_160039/hyper_lr0.08500150000000001_keep_prob_0.8_n_latent_128_output_nonlinear_None_n_blocks_2/best_model.ckpt.
+   [Plateau Metric] step: 167 loss: 1.827 accuracy: 0.828
+   [Plateau Metric] step: 169 loss: 1.776 accuracy: 0.828
+   [Plateau Metric] step: 171 loss: 0.910 accuracy: 0.891
+   [Plateau Metric] step: 173 loss: 0.207 accuracy: 0.984
+   Saving checkpoints for 174 into experiments/models/resnet_demo/1218_160039/hyper_lr0.08500150000000001_keep_prob_0.8_n_latent_128_output_nonlinear_None_n_blocks_2/best_model.ckpt.
+   [Plateau Metric] step: 175 loss: 0.181 accuracy: 0.984
+   ...
+   ```
+
+   
+
+4. 评估模型。根据上步所训练的模型结构及模型参数，评估在`data_evaluate`上表现，分类模型输出`accuracy`值和`confusion matrix`
+
+   ```python
+   automl.evaluate()
+   ```
+
+   部分日志如下所示：
+
+   ```javascript
+   ----------In Evaluation stage 
+   Restoring parameters from experiments/models/resnet_demo/1218_160039/hyper_lr0.08500150000000001_keep_prob_0.8_n_latent_128_output_nonlinear_None_n_blocks_2/best_model.ckpt-200
+   Running local_init_op.
+   Done running local_init_op.
+   step: 1	batch/sec: 117.715	loss: 0.007	accuracy: 1.000
+   step: 3	batch/sec: 133.102	loss: 0.007	accuracy: 1.000
+   step: 5	batch/sec: 115.314	loss: 0.007	accuracy: 1.000
+   step: 7	batch/sec: 103.886	loss: 0.007	accuracy: 1.000
+   step: 9	batch/sec: 99.960	loss: 0.007	accuracy: 1.000
+   ...
+   loss: 0.006915087699890137	accuracy: 1.0		[100 batches]
+   Confusion matrix plot is 'experiments/output_files/resnet_demo/1218_160039/ResNet_confusion_matrix.pdf'
+   ```
+
+   得到的confusion matrix图如下所示，图数字大小会根据类别数多少进行调整，x轴为真值，y轴为预测值：
+
+   ![](../images/resnet_confusion_matrix.png)
+
+   
+
+5. 预测数据。根据第3步所训练的模型结构及模型参数，对于给定features数据，分类问题预测其类别及各个类别的softmax值，并输出到对应的csv文件中
+
+   ```python
+   automl.predict()
+   ```
+
+   日志如下所示：
+
+   ```javascript
+   ----------In Prediction stage 
+   Graph was finalized.
+   Restoring parameters from experiments/models/resnet_demo/1218_160039/hyper_lr0.08500150000000001_keep_prob_0.8_n_latent_128_output_nonlinear_None_n_blocks_2/best_model.ckpt-200
+   Running local_init_op.
+   Done running local_init_op.
+   step: 9	batch/sec: 110.194
+   	[10 batches]
+   Predicted values file is "experiments/output_files/resnet_demo/1218_160039/ResNet_predicted_result_data_frame.csv"
+   ```
+
+   如日志所示，将输出预测的target文件，文件第一列`predicted_result`，第二列`softmax_value`为各个类别的softmax值。
+
+6. 变量重要性排序。根据第3步所训练的模型结构及模型参数，对变量重要性进行排序，输出各个类别变量重要性，`explainer`中需要指定变量名对应的文件。
+
+   ```python
+   automl.explain()
+   ```
+
+   对模型变量重要性进行排序，输出日志如下：
+
+   ```javascript
+   ----------Initialize Shap class
+   Restoring parameters from experiments/models/resnet_demo/1218_160039/hyper_lr0.08500150000000001_keep_prob_0.8_n_latent_128_output_nonlinear_None_n_blocks_2/best_model.ckpt-200
+   ----------Computing shap_values with 80  examples and 23361 features
+   importance plot is 'experiments/output_files/resnet_demo/1218_160039/_dot0_feature_importance_summary.pdf'
+   importance plot is 'experiments/output_files/resnet_demo/1218_160039/_dot1_feature_importance_summary.pdf'
+   features orders in all classes is saved in 'experiments/output_files/resnet_demo/1218_160039/_features_orders.csv'
+   importance plot for every classes is 'experiments/output_files/resnet_demo/1218_160039/class_1feature_importance_summary.pdf'
+   importance plot for every classes is 'experiments/output_files/resnet_demo/1218_160039/class_0feature_importance_summary.pdf'
+   importance plot is 'experiments/output_files/resnet_demo/1218_160039/_barTotal_feature_importance_summary.pdf'
+   shap_values every classes is 'experiments/output_files/resnet_demo/1218_160039/_class_0shap_values.csv'
+   shap_values every classes is 'experiments/output_files/resnet_demo/1218_160039/_class_1shap_values.csv
+   ```
+
+   运行结束后将输出各个类别的变量重要性条图和点图和总的变量重要性图，如下所示：
+
+   总的变量重要性图：
+   ![](/images/resnet_total_feature_importance_summary.png)
+
+   class 1变量重要性条图：
+   ![](/images/resnet_class1_feature_importance_summary_bar.png)
+   
+   class 0变量重要性条图：
+   ![](/images/resnet_class0_feature_importance_summary_bar.png)
+   
+   class 1变量重要性点图：
+   ![](/images/resnet_class1_feature_importance_summary_dot.png)
+   
+   class 0变量重要性点图：
+   ![](/images/resnet_class0_feature_importance_summary_dot.png)
+   
+
+## RFCN-DenseNet案例
+
+- [配置文件](##配置文件)
+- [使用](##使用)
+
+
+
+DenseNet案例以一个二分类任务为例，`features`数据`little_exp.tsv`包含100个samples，23361个features。
+
+```bash
+> wc little_exp.tsv | awk '{print $1}'  # 打印行数
+100
+> sed -n '1,1p' little_exp.tsv | awk '{print NF}'  # 打印列数
+23361
+```
+
+`target`数据为两类，分别为70和30。
+
+```bash
+> grep -c 0 little_learning_target.tsv
+70
+> grep -c 1 little_learning_target.tsv
+30
+```
+
+
+
+首先，准备配置文件，具体如下所示：
+
+### 配置文件
+
+```javascript
+{
+    "name": "densenet_demo",  // Project name
+
+    "model": {
+        "type": "DenseNet",
+        "args": {
+            "output_classes": 2}  // 分类数目
+    },
+
+    "data_train": {
+        "type": "DataLoader",
+        "args":{
+            "data_dir": "/data_autogenome/data_test",  //数据所在文件夹，推荐使用绝对路径
+            "features_file": "little_exp.tsv",   //features文件名
+            "labels_file": "little_learning_target.tsv",   //target文件名
+            "validation_split": 0.2,  //验证集比例
+            "shuffle": true,  //训练时是否对数据进行打乱操作
+            "delimiter": " "  //数据分隔符，default: '\t'
+        }
+    },
+
+    "data_evaluate": {
+        "type": "DataLoader",
+        "args": {
+            "data_dir": "/data_autogenome/data_test",
+            "features_file": "little_exp.tsv",  //用于单独评估的features文件名
+            "labels_file": "little_learning_target.tsv",  //用于单独评估的target文件名
+            "delimiter": " "
+        }
+    },
+
+    "data_predict": {
+        "type": "DataLoader",
+        "args": {
+            "data_dir": "/data_autogenome/data_test",
+            "features_file": "little_exp.tsv",  //用于单独预测的features文件名
+            "delimiter": " "
+        }
+    },
+
+    "input_fn": {
+        "num_threads": 16  //读取数据线程数
+    },
+
+    "trainer": {
+        "hyper_selector": true,  //[true/false]，是否进行超参搜索
+        "batch_size": 64,  //每次训练的样本数大小
+        "save_dir": "./experiments",  //保存日志、模型参数、结果输出的文件夹名称
+        "monitor": "accuracy",  //[accuracy/loss/f1_score]，训练过程中在验证集上评估指标
+        "num_gpus": 1,  //机器可使用gpu个数
+        "patience": 30,   //连续多少个epoch后在验证集上效果没有再提升，则停止训练
+        "pre_train_epoch": 10,  //超参搜索阶段，每组参数训练的epoch数目
+        "max_steps": 64000,  //训练最大运行的steps，当patience很大时则会训练max_steps步，max_steps*batch_size/num_samples为对应训练的epoch数
+        "loss": "cross_entropy",
+        "selected_mode": "max"   //[max/min]验证集上评估指标是越大越好还是越小越好
+    },
+
+    "optimizer": {
+        "type": "adam"  //[adam/sgd/adadelta/adagrad/adamw/ftrl/momentum/rmsprop/kfac/dynamic_momentum/lamb]
+    },
+
+    "evaluator": {
+        "max_number_of_steps": 10,
+        "batch_size":100
+    },
+
+    "predictor": {
+        "log_every_n_steps": 10,
+        "output_every_n_steps": 1,
+        "max_number_of_steps": 100,
+        "batch_size":100
+    },
+
+    "explainer": {
+        "args": {
+            "features_name_file": "/data_autogenome/data_test/names_2.txt",  //变量名文件，一列，行数为变量个数
+            "plot_type": "bar",  //[bar/dot/violin/layered_violin]
+            "num_samples": 80,  //使用的样本数
+            "ranked_outputs": 20  //输出变量重要性前多少个
+        }
+    },
+
+    "param_spec": {                //模型初始参数
+        "type": "origin_params",
+        "args": {
+            "DenseNet": {
+                "growth_rate":32,
+                "bn_size":32,
+                "block_config": [2, 3],   //densenet中block参数
+                "keep_prob": 1,
+                "output_nonlinear": null
+            },
+            "optimizer_param": {
+                "learning_rate": 0.0001
+            }
+        }
+    },
+
+    "hyper_param_spec": {             //超参搜索空间
+        "type": "hyper_params",
+        "args": {
+            "DenseNet": {
+                "growth_rate": [64, 32],
+                "bn_size": [16, 32, 64],
+                "block_config": [[2, 3], [2, 3, 4]],
+                "keep_prob": [0.8, 1.0],
+                "output_nonlinear": [null, "relu", "tanh", "sigmoid"]
+            },
+            "optimizer_param": {
+
+            }
+        }
+}
+}
+
+```
+
+
+
+### 使用
+
+AutoGenome的使用主要包含以下几步：
+
+1. 导入autogenome包
+
+   ```python
+   import autogenome as ag
+   ```
+
+2. 读取配置文件，配置文件如上述所示
+
+   ```python
+   automl = ag.auto("/data_autogenome/data_test/json_hub_simple/densenet_test.json")
+   ```
+
+   配置文件读取成功后，会打印如下日志：
+
+   ```javascript
+   ==========================================================
+   ----------Use the config from /data_autogenome/data_test/json_hub_simple/densenet_test.json
+   ----------Initialize data_loader class
+   ----------Initialize Optimizer
+   ----------Initialize hyper_param_spec class 
+   ----------Initialize param_spec class 
+   ==========================================================
+   #################################################################################
+   #                                                                               #
+   #                                                                               #
+            Ready to search the best hyper parameters for DenseNet model            
+   #                                                                               #
+   #                                                                               #
+   #################################################################################
+   ```
+
+   
+
+3. 训练模型。根据配置文件中训练参数进行模型训练，将数据集划分为训练集:验证集为8:2，使用训练集数据进行训练，同时在验证集数据上进行评估，保存在验证集数据上评价指标（trainer.monitor: "accuracy"）更好的模型和参数到相应文件夹（trainer.saver: "./experiments"）中的`models`文件夹中
+
+   ```python
+   automl.train()
+   ```
+
+   训练过程中，先将模型初始化为`param_spec`中参数，然后在超参搜索空间`hyper_param_spec`中进行参数搜索，每一种参数组合会训练一定的epoch数（trainer.pre_train_epoch），挑选结果最好的作为最终模型结构参数并进行进一步训练，训练过程中在验证集上进行评估，当结果更好时保存模型参数，在连续数个epoch（trainer.patience）后在验证集上效果没有再提升，则停止训练。
+
+   训练过程中部分日志如下:
+
+   ```javascript
+   ----------In Hyper & Training Search stage
+   ...
+   Pretraining: search parameter is growth_rate, search value is 32
+   LR_RANGE_TEST From begin_lr 0.000010 To end_lr 0.100000, 
+   Graph was finalized.
+   Running local_init_op.
+   Done running local_init_op.
+   Running will end at step: 10
+   step: 0(global step: 0)	sample/sec: 30.537	loss: 0.815	accuracy: 0.500
+   ...
+   [Plateau Metric] step: 227 loss: 0.483 accuracy: 0.969
+   Saving checkpoints for 228 into data_autogenome/data_test/experiments/models/densenet_demo/1217_200522/hyper_lr0.08500150000000001_block_config_23_bn_size_16_output_nonlinear_None_growth_rate_64_keep_prob_0.8/best_model.ckpt.
+   [Plateau Metric] step: 229 loss: 0.906 accuracy: 0.938
+   [Plateau Metric] step: 231 loss: 0.664 accuracy: 0.953
+   [Plateau Metric] step: 233 loss: 1.088 accuracy: 0.922
+   [Plateau Metric] step: 235 loss: 0.214 accuracy: 0.984
+   Saving checkpoints for 236 into data_autogenome/data_test/experiments/models/densenet_demo/1217_200522/hyper_lr0.08500150000000001_block_config_23_bn_size_16_output_nonlinear_None_growth_rate_64_keep_prob_0.8/best_model.ckpt.
+   [Plateau Metric] step: 237 loss: 0.613 accuracy: 0.953
+   [Plateau Metric] step: 239 loss: 0.797 accuracy: 0.938
+   ...
+   ```
+
+   
+
+4. 评估模型。根据上步所训练的模型结构及模型参数，评估在`data_evaluate`上表现，分类模型输出`accuracy`值和`confusion matrix`
+
+   ```python
+   automl.evaluate()
+   ```
+
+   部分日志如下所示：
+
+   ```javascript
+   ----------In Evaluation stage
+   Restoring parameters from data_autogenome/data_test/experiments/models/densenet_demo/1217_200522/hyper_lr0.08500150000000001_block_config_23_bn_size_16_output_nonlinear_None_growth_rate_64_keep_prob_0.8/best_model.ckpt-272
+   Running local_init_op.
+   Done running local_init_op.
+   step: 1	batch/sec: 13.002	loss: 0.080	accuracy: 0.990
+   step: 3	batch/sec: 17.464	loss: 0.080	accuracy: 0.990
+   step: 5	batch/sec: 14.547	loss: 0.080	accuracy: 0.990
+   step: 7	batch/sec: 11.867	loss: 0.080	accuracy: 0.990
+   step: 9	batch/sec: 13.184	loss: 0.080	accuracy: 0.990
+   loss: 0.07991278767585755	accuracy: 0.9899998664855957		[10 batches]
+   Confusion matrix plot is 'data_autogenome/data_test/experiments/output_files/densenet_demo/1217_200522/DenseNet_confusion_matrix.pdf'
+   ```
+
+   得到的confusion matrix图如下所示，图数字大小会根据类别数多少进行调整，x轴为真值，y轴为预测值：
+
+   ![](/images/densenet_confusion_matrix.png)
+
+   
+
+5. 预测数据。根据第3步所训练的模型结构及模型参数，对于给定features数据，分类问题预测其类别及各个类别的softmax值，并输出到对应的csv文件中
+
+   ```python
+   automl.predict()
+   ```
+
+   日志如下所示：
+
+   ```javascript
+   ----------In Prediction stage 
+   Restoring parameters from data_autogenome/data_test/experiments/models/densenet_demo/1217_200522/hyper_lr0.08500150000000001_block_config_23_bn_size_16_output_nonlinear_None_growth_rate_64_keep_prob_0.8/best_model.ckpt-272
+   Running local_init_op.
+   Done running local_init_op.
+   ...
+   Predicted values file is "data_autogenome/data_test/experiments/output_files/densenet_demo/1217_200522/DenseNet_predicted_result_data_frame.csv"
+   ```
+
+   如日志所示，将输出预测的target文件，文件第一列`predicted_result`，第二列`softmax_value`为各个类别的softmax值。
+
+6. 变量重要性排序。根据第3步所训练的模型结构及模型参数，对变量重要性进行排序，输出各个类别变量重要性，`explainer`中需要指定变量名对应的文件。
+
+   ```python
+   automl.explain()
+   ```
+
+   对模型变量重要性进行排序，输出日志如下：
+
+   ```javascript
+   ----------Initialize Shap class
+   Restoring parameters from data_autogenome/data_test/experiments/models/densenet_demo/1217_200522/hyper_lr0.08500150000000001_block_config_23_bn_size_16_output_nonlinear_None_growth_rate_64_keep_prob_0.8/best_model.ckpt-272
+   ----------Computing shap_values with 80  examples and 23361 features
+   importance plot is 'data_autogenome/data_test/experiments/output_files/densenet_demo/1217_200522/_dot0_feature_importance_summary.pdf'
+   importance plot is 'data_autogenome/data_test/experiments/output_files/densenet_demo/1217_200522/_dot1_feature_importance_summary.pdf'
+   features orders in all classes is saved in 'data_autogenome/data_test/experiments/output_files/densenet_demo/1217_200522/_features_orders.csv'
+   importance plot for every classes is 'data_autogenome/data_test/experiments/output_files/densenet_demo/1217_200522/class_0feature_importance_summary.pdf'
+   importance plot for every classes is 'data_autogenome/data_test/experiments/output_files/densenet_demo/1217_200522/class_1feature_importance_summary.pdf'
+   importance plot is 'data_autogenome/data_test/experiments/output_files/densenet_demo/1217_200522/_barTotal_feature_importance_summary.pdf'
+   shap_values every classes is 'data_autogenome/data_test/experiments/output_files/densenet_demo/1217_200522/_class_0shap_values.csv'
+   shap_values every classes is 'data_autogenome/data_test/experiments/output_files/densenet_demo/1217_200522/_class_1shap_values.csv'
+   ```
+
+   运行结束后将输出各个类别的变量重要性条图和点图和总的变量重要性图，如下所示：
+
+   总的变量重要性图：
+
+   ![](/images/densenet_total_feature_importance_summary.png)
+
+   class 1变量重要性条图：
+
+   ![](/images/densenet_class1_feature_importance_summary_bar.png)
+
+   class 0变量重要性条图：
+
+   ![](/images/densenet_class0_feature_importance_summary_bar.png)
+
+   class 1变量重要性点图：
+
+   ![](/images/densenet_class1_feature_importance_summary_dot.png)
+
+   class 0变量重要性点图：
+
+   ![](/images/densenet_class0_feature_importance_summary_dot.png)
+
+
+## RRFCN（ENAS的变体）案例
+
+- [配置文件](##配置文件)
+- [使用](##使用)
+
+
+
+ENAS案例以一个二分类任务为例，`features`数据`little_exp.tsv`包含100个samples，23361个features。
+
+```bash
+> wc little_exp.tsv | awk '{print $1}'  # 打印行数
+100
+> sed -n '1,1p' little_exp.tsv | awk '{print NF}'  # 打印列数
+23361
+```
+
+`target`数据为两类，分别为70和30。
+
+```bash
+> grep -c 0 little_learning_target.tsv
+70
+> grep -c 1 little_learning_target.tsv
+30
+```
+
+
+
+### 配置文件
+
+首先，准备配置文件，具体如下所示：
+
+```javascript
+{
+    "name": "enas_demo",     // Project name
+
+    "model": {
+        "type": "enas",
+        "args": {
+            "output_classes": 2}   // 分类数目
+    },
+
+    "data_train": {
+        "type": "DataLoader",
+        "args":{
+            "data_dir": "/data_autogenome/data_test",  //数据所在文件夹，推荐使用绝对路径
+            "features_file": "little_exp.tsv",       //features文件名
+            "labels_file": "little_learning_target.tsv",   //target文件名
+            "validation_split": 0.2,   //验证集比例
+            "shuffle": true,   //训练时是否对数据进行打乱操作
+            "delimiter": " "   //数据分隔符，default: '\t'
+        }
+    },
+
+    "data_evaluate": {
+        "type": "DataLoader",
+        "args": {
+            "data_dir": "./data_autogenome/data_test",
+            "features_file": "little_exp.tsv",    //用于单独评估的features文件名
+            "labels_file": "little_learning_target.tsv",   //用于单独评估的target文件名
+            "delimiter": " "
+        }
+    },
+
+    "data_predict": {
+        "type": "DataLoader",
+        "args": {
+            "data_dir": "./data_autogenome/data_test",
+            "features_file": "little_exp.tsv",    //用于单独预测的features文件名
+            "delimiter": " "
+        }
+    },
+
+    "input_fn": {
+        "num_threads": 16   //读取数据线程数
+    },
+
+    "trainer": {
+        "child_num_layers": 3,     //除第一层外的网络层数，enas中将固定第一层大小，后面的层数搜索空间最大值为第一层大小，即max_search_channel
+        "batch_size": 64,     //每次训练的样本数大小
+        "max_number_of_epoches_in_search": 10,  //超参搜索阶段，搜索的epoches数目
+        "max_number_of_epoches_in_fixed": 50,   //训练阶段epoch数目
+        "top_k_candidates": 2,   //搜索结束后对多少个候选网络进行训练，>=2
+        "child_l2_reg": 1e-4,   //l2 loss正则化项
+        "max_search_channel": 512,    //第一层网络大小，也是后面网络搜索空间上限
+        "save_dir": "/experiments/"  //保存日志、模型参数、结果输出的文件夹名称
+    },
+
+    "evaluator": {
+        "max_number_of_steps": 10,
+        "batch_size":100
+    },
+
+    "predictor": {
+        "max_number_of_steps": 10,
+        "batch_size":100
+    },
+
+    "explainer": {
+        "args": {
+            "plot_type": "bar",
+            "features_name_file": "/data_autogenome/data_test/names_2.txt",  //变量名文件，一列，行数为变量个数
+            "num_samples": 80,
+            "ranked_outputs": 20
+        }
+    }
+}
+
+```
+
+
+
+### 使用
+
+AutoGenome的使用主要包含以下几步：
+
+1. 导入autogenome包
+
+   ```python
+   import autogenome as ag
+   ```
+
+2. 读取配置文件，配置文件如上述所示
+
+   ```python
+   automl = ag.auto("/data_autogenome/data_test/json_hub_simple/enas_test.json")
+   ```
+
+   配置文件读取成功后，会打印如下日志：
+
+   ```javascript
+   ==========================================================
+   ----------Use the config from ./data_autogenome/data_test/json_hub_simple/enas_test.json
+   ----------Initialize enas class
+   ----------Initialize data_loader class
+   ==========================================================
+   #################################################################################
+   #                                                                               #
+   #                                                                               #
+            Ready to search the best neural arch for enas model            
+   #                                                                               #
+   #                                                                               #
+   #################################################################################
+   ```
+   
+   
+
+3. 训练模型。根据配置文件中训练参数进行模型训练，将数据集划分为训练集:验证集为8:2，使用训练集数据进行训练，同时在验证集数据上进行评估，保存在验证集数据上评价指标（trainer.monitor: "accuracy"）更好的模型和参数到相应文件夹（trainer.saver: "./experiments"）中的`models`文件夹中
+
+   ```python
+   automl.train()
+   ```
+
+   ENAS先进行网络结构搜索，搜索`trainer.max_number_of_epoches_in_search`个epoches数目，搜索结束后挑选结果最好的`trainer.top_k_candidates`个网络结构，并分别训练`trainer.max_number_of_epoches_in_fixed`个epoches数目，训练过程中在验证集上进行评估，当结果更好时保存模型参数，训练过程中部分日志如下:
+
+   ```javascript
+   ----------In Hyper & Training Search stage
+   ...
+   Running will end at step: 20
+   step: 0(global step: 0)	sample/sec: 21.559	acc: 0.641	epoch: 0.000	l2 loss: 1.127	ch_step: 0.000	child loss: 1.779
+   ('[3 0 1 2 1 1]', 0.265625)
+   ('[0 4 1 2 0 1]', 0.375)
+   ('[4 4 1 4 1 1]', 0.25)
+   ('[4 0 1 0 1 1]', 0.28125)
+   ...
+   ('[0 2 0 3 0 0]', 0.328125)
+   ('[1 0 0 3 0 1]', 0.265625)
+   ('[0 3 0 2 0 0]', 0.296875)
+   ('[3 1 0 2 0 1]', 0.28125)
+   step: 10(global step: 10)	sample/sec: 801.774	acc: 0.938	epoch: 5.000	l2 loss: 1.142	ch_step: 0.000	child loss: 1.275
+   ...
+   enas train time : 0.30       minutes.
+   
+   training [2 4 0 0 0 0]
+   Saving checkpoints for 0 into experiments/enas/models/enas_demo/1225_103754/1/model.ckpt.
+   
+   Running will end at step: 100
+   step: 0(global step: 0)	sample/sec: 45.455	train_acc: 0.641	child l2 loss:: 0.230	child loss:: 0.784
+   {'valid_acc': 0.734375}, 0
+   old: 0, new: 0.734375
+   [VALIDATION METRICS] step: 1 valid_acc: 0.734
+   Saving checkpoints for 2 into experiments/enas/models/enas_demo/1225_103754/1_1/best_model.ckpt.
+   {'valid_acc': 0.625}, 0.734375
+   [VALIDATION METRICS] step: 3 valid_acc: 0.625
+   ...
+   training [1 4 0 1 1 0]
+   ...
+   training arc: [1 4 0 1 1 0], valid_acc: 1.0
+   Best arc:[1 4 0 1 1 0], eval_acc:1.0, max_k:2
+   ```
+
+   日志中会打印候选的网络结构、训练过程中最佳acc及对应的网络结构。
+
+   
+
+4. 评估模型。根据上步所训练的模型结构及模型参数，评估在`data_evaluate`上表现，分类模型输出`accuracy`值和`confusion matrix`
+
+   ```python
+   automl.evaluate()
+   ```
+
+   部分日志如下所示：
+
+   ```javascript
+   ----------In Evaluation stage
+   Restoring parameters from experiments/enas/models/enas_demo/1225_103754/2_1/best_model.ckpt-54
+   Running local_init_op.
+   Done running local_init_op.
+   step: 1	batch/sec: 57.737	valid_acc: 1.000
+   step: 3	batch/sec: 53.513	valid_acc: 1.000
+   step: 5	batch/sec: 63.091	valid_acc: 1.000
+   step: 7	batch/sec: 57.627	valid_acc: 1.000
+   step: 9	batch/sec: 63.674	valid_acc: 1.000
+   valid_acc: 1.0		[10 batches]
+   Confusion matrix plot is 'experiments/enas/output_files/enas_demo/1225_103754/enas_confusion_matrix.pdf'
+   ```
+
+   得到的confusion matrix图如下所示，图数字大小会根据类别数多少进行调整，x轴为真值，y轴为预测值：
+
+   <img src="../images/enas_confusion_matrix.png" style="zoom:75%;" />
+
+   
+
+5. 预测数据。根据第3步所训练的模型结构及模型参数，对于给定features数据，分类问题预测其类别及各个类别的softmax值，并输出到对应的csv文件中
+
+   ```python
+   automl.predict()
+   ```
+
+   日志如下所示：
+
+   ```javascript
+   ----------In Prediction stage 
+   Restoring parameters from experiments/enas/models/enas_demo/1225_103754/2_1/best_model.ckpt-54
+   Running local_init_op.
+   Done running local_init_op.
+   step: 9	batch/sec: 63.824
+   	[10 batches]
+   Predicted values file is "experiments/enas/output_files/enas_demo/1225_103754/enas_predicted_result_data_frame.csv"
+   ```
+
+   如日志所示，将输出预测的target文件，文件第一列`predicted_result`，第二列`softmax_value`为各个类别的softmax值。
+
+6. 变量重要性排序。根据第3步所训练的模型结构及模型参数，对变量重要性进行排序，输出各个类别变量重要性，`explainer`中需要指定变量名对应的文件。
+
+   ```python
+   automl.explain()
+   ```
+
+   对模型变量重要性进行排序，输出日志如下：
+
+   ```javascript
+   ----------Initialize Shap class
+   Restoring parameters from experiments/enas/models/enas_demo/1225_103754/2_1/best_model.ckpt-54
+   ----------Computing shap_values with 80  examples and 23361 features
+   importance plot is 'experiments/enas/output_files/enas_demo/1225_103754/_dot0_feature_importance_summary.pdf'
+   importance plot is 'experiments/enas/output_files/enas_demo/1225_103754/_dot1_feature_importance_summary.pdf'
+   features orders in all classes is saved in 'experiments/enas/output_files/enas_demo/1225_103754/_features_orders.csv'
+   importance plot for every classes is 'experiments/enas/output_files/enas_demo/1225_103754/class_1feature_importance_summary.pdf'
+   importance plot for every classes is 'experiments/enas/output_files/enas_demo/1225_103754/class_0feature_importance_summary.pdf'
+   importance plot is 'experiments/enas/output_files/enas_demo/1225_103754/_barTotal_feature_importance_summary.pdf'
+   shap_values every classes is 'experiments/enas/output_files/enas_demo/1225_103754/_class_0shap_values.csv'
+   shap_values every classes is 'experiments/enas/output_files/enas_demo/1225_103754/_class_1shap_values.csv'
+   ```
+
+   运行结束后将输出各个类别的变量重要性条图和点图和总的变量重要性图，如下所示：
+
+   总的变量重要性图：
+
+   ![](../images/enas_total_feature_importance_summary.png)
+
+   class 1变量重要性条图：
+
+   ![](../images/enas_class1_feature_importance_summary_bar.png)
+
+   class 0变量重要性条图：
+
+   ![](../images/enas_class0_feature_importance_summary_bar.png)
+
+   class 1变量重要性点图：
+
+   ![](../images/enas_class1_feature_importance_summary_dot.png)
+
+   class 0变量重要性点图：
+
+   ![](../images/enas_class0_feature_importance_summary_dot.png)
+   
+
+## Res-VAE案例
+
+- [配置文件](##配置文件)
+- [使用](##使用)
+
+
+
+Res-VAE案例以`little_exp.tsv`数据为例，`features`数据`little_exp.tsv`包含100个samples，23361个features。对该数据进行Res-VAE，提取其关键特征进行降维，输出latent vector可用于进一步聚类分析。
+
+![](../images/vae.png)
+
+```bash
+> wc little_exp.tsv | awk '{print $1}'  # 打印行数
+100
+> sed -n '1,1p' little_exp.tsv | awk '{print NF}'  # 打印列数
+23361
+```
+
+
+
+首先，准备配置文件，具体如下所示：
+
+### 配置文件
+
+```javascript
+{
+    "name": "res_vae_demo",   // Project name
+
+    "model": {
+        "type": "VAE"
+    },
+
+    "data_train": {
+        "type": "DataLoader",
+        "args":{
+            "data_dir": "/data_autogenome/data_test",  //数据所在文件夹，推荐使用绝对路径
+            "features_file": "little_exp.tsv",  //features文件名
+            "validation_split": 0.2,   //验证集比例
+            "shuffle": true,   //训练时是否对数据进行打乱操作
+            "delimiter": " "    //数据分隔符，default: '\t'
+        }
+    },
+
+    "data_predict": {
+        "type": "DataLoader",
+        "args": {
+            "data_dir": "/data_autogenome/data_test",
+            "features_file": "little_exp.tsv",    //用于单独评估的features文件名
+            "delimiter": " "
+        }
+    },
+
+    "input_fn": {
+        "num_threads": 16    //读取数据线程数
+    },
+
+    "trainer": {
+        "hyper_selector": true,
+        "batch_size": 64,
+        "save_dir": "./experiments/",
+        "monitor": "loss",
+        "selected_mode": "min",
+        "num_gpus": 1,
+        "select_by_eval":false,
+        "patience": 30,
+        "pre_train_epoch": 10,  //超参搜索阶段，每组参数训练的epoch数目
+        "max_steps": 64000  //训练最大运行的steps，当patience很大时则会训练max_steps步，max_steps*batch_size/num_samples为对应训练的epoch数
+    },
+
+    "optimizer": {
+        "type": "adam"
+    },
+
+    "predictor": {
+        "log_every_n_steps": 10,
+        "output_every_n_steps": 1,
+        "max_number_of_steps": 20,
+        "batch_size": 64
+    },
+
+    "param_spec": {   //模型初始参数
+        "type": "origin_params",
+        "args": {
+            "VAE": {
+                "keep_prob": 1.0,
+                "start_size": 1024,
+                "decay_ratio_list": [0.8, 0.6, 0.6]
+            },
+            "optimizer_param": {
+                "learning_rate": 0.01
+            }
+        }
+    },
+
+    "hyper_param_spec": {   //超参搜索空间
+        "type": "hyper_params",
+        "args": {
+            "VAE": {
+                "keep_prob": [0.6, 0.8, 1.0],
+                "start_size": [1024, 512, 256],
+                "num_layers": [5, 4, 3],
+                "decay_ratio": [0.6, 0.8]
+            },
+            "optimizer_param": {
+
+            }
+        }
+}
+}
+
+```
+
+
+
+### 使用
+
+AutoGenome的使用主要包含以下几步：
+
+1. 导入autogenome包
+
+   ```python
+   import autogenome as ag
+   ```
+
+2. 读取配置文件，配置文件如上述所示
+
+   ```python
+   automl = ag.auto("/data_autogenome/data_test/json_hub_simple/densenet_test.json")
+   ```
+
+   配置文件读取成功后，会打印如下日志：
+
+   ```javascript
+   ==========================================================
+   ----------Use the config from /data_autogenome/data_test/json_hub_simple/resvae_test.json
+   ----------Initialize data_loader class
+   ----------Initialize Optimizer
+   ----------Initialize hyper_param_spec class 
+   ----------Initialize param_spec class 
+   ==========================================================
+   #################################################################################
+   #                                                                               #
+   #                                                                               #
+            Ready to search the best hyper parameters for VAE model            
+   #                                                                               #
+   #                                                                               #
+   #################################################################################
+   ```
+
+   
+
+3. 训练模型。根据配置文件中训练参数进行模型训练，将数据集划分为训练集:验证集为8:2，使用训练集数据进行训练，同时可选择是否在验证集数据上进行评估，保存在评价指标（trainer.monitor: "loss"）更小的模型和参数到相应文件夹（trainer.saver: "./experiments"）中的`models`文件夹中
+
+   ```python
+   automl.train()
+   ```
+
+   训练过程中，先将模型初始化为`param_spec`中参数，然后在超参搜索空间`hyper_param_spec`中进行参数搜索，每一种参数组合会训练一定的epoch数（trainer.pre_train_epoch），挑选结果最好的作为最终模型结构参数并进行进一步训练，训练过程中在验证集上进行评估，当结果更好时保存模型参数，训练过程中一段时间效果没有再提升，则停止训练。
+
+   训练过程中部分日志如下:
+
+   ```javascript
+   ----------In Hyper & Training Search stage
+   ...
+   Pretraining: search parameter is decay_ratio_list, search value is (0.6, 0.6, 0.6, 0.6)
+   LR_RANGE_TEST From begin_lr 0.000010 To end_lr 0.100000, 
+   Graph was finalized.
+   Running local_init_op.
+   Done running local_init_op.
+   From /opt/conda/envs/py2/lib/python2.7/site-packages/tensorflow/python/training/monitored_session.py:804: start_queue_runners (from tensorflow.python.training.queue_runner_impl) is deprecated and will be removed in a future version.
+   Instructions for updating:
+   To construct input pipelines, use the `tf.data` module.
+   Running will end at step: 200
+   step: 0(global step: 0)	sample/sec: 1.066	loss: 6.500	reconstruct_loss: 6.491	KLD_loss: 0.009
+   step: 10(global step: 10)	sample/sec: 4.948	loss: 4.740	reconstruct_loss: 4.730	KLD_loss: 0.009
+   step: 20(global step: 20)	sample/sec: 4.905	loss: 4.479	reconstruct_loss: 4.469	KLD_loss: 0.010
+   step: 30(global step: 30)	sample/sec: 4.958	loss: 4.194	reconstruct_loss: 4.184	KLD_loss: 0.010
+   step: 40(global step: 40)	sample/sec: 4.937	loss: 5.517	reconstruct_loss: 5.507	KLD_loss: 0.010
+   step: 50(global step: 50)	sample/sec: 4.972	loss: 5.426	reconstruct_loss: 5.417	KLD_loss: 0.010
+   step: 60(global step: 60)	sample/sec: 5.000	loss: 5.974	reconstruct_loss: 5.964	KLD_loss: 0.010
+   step: 70(global step: 70)	sample/sec: 4.952	loss: 5.954	reconstruct_loss: 5.944	KLD_loss: 0.010
+   step: 80(global step: 80)	sample/sec: 4.978	loss: 5.019	reconstruct_loss: 5.009	KLD_loss: 0.010
+   step: 90(global step: 90)	sample/sec: 4.970	loss: 7.211	reconstruct_loss: 7.201	KLD_loss: 0.010
+   step: 100(global step: 100)	sample/sec: 4.895	loss: 6.998	reconstruct_loss: 6.988	KLD_loss: 0.010
+   step: 110(global step: 110)	sample/sec: 4.945	loss: 6.677	reconstruct_loss: 6.666	KLD_loss: 0.011
+   step: 120(global step: 120)	sample/sec: 4.986	loss: 6.008	reconstruct_loss: 5.997	KLD_loss: 0.011
+   step: 130(global step: 130)	sample/sec: 4.887	loss: 6.592	reconstruct_loss: 6.582	KLD_loss: 0.011
+   step: 140(global step: 140)	sample/sec: 4.960	loss: 7.500	reconstruct_loss: 7.489	KLD_loss: 0.011
+   step: 150(global step: 150)	sample/sec: 4.953	loss: 7.281	reconstruct_loss: 7.271	KLD_loss: 0.011
+   step: 160(global step: 160)	sample/sec: 4.930	loss: 6.914	reconstruct_loss: 6.904	KLD_loss: 0.011
+   step: 170(global step: 170)	sample/sec: 4.935	loss: 7.423	reconstruct_loss: 7.412	KLD_loss: 0.011
+   step: 180(global step: 180)	sample/sec: 4.948	loss: 7.145	reconstruct_loss: 7.134	KLD_loss: 0.011
+   step: 190(global step: 190)	sample/sec: 4.943	loss: 6.629	reconstruct_loss: 6.619	KLD_loss: 0.011
+   ...
+   The model and events are saved in data_autogenome/data_test/experiments/models/res_vae_demo/1105_013120/hyper_lr0.017883212500000002_decay_ratio_list_(0.60.60.6)_start_size_256_keep_prob_1.0
+   Graph was finalized.
+   Running local_init_op.
+   Done running local_init_op.
+   Running will end at step: 64000
+   step: 0(global step: 0)	sample/sec: 2.123	loss: 6.988	reconstruct_loss: 6.987	KLD_loss: 0.001
+   step: 5(global step: 5)	sample/sec: 10.490	loss: 6.911	reconstruct_loss: 6.910	KLD_loss: 0.001
+   step: 10(global step: 10)	sample/sec: 36.250	loss: 6.771	reconstruct_loss: 6.770	KLD_loss: 0.001
+   step: 15(global step: 15)	sample/sec: 20.972	loss: 4.897	reconstruct_loss: 4.896	KLD_loss: 0.001
+   step: 20(global step: 20)	sample/sec: 28.025	loss: 3.996	reconstruct_loss: 3.995	KLD_loss: 0.001
+   step: 25(global step: 25)	sample/sec: 77.930	loss: 2.605	reconstruct_loss: 2.604	KLD_loss: 0.001
+   step: 30(global step: 30)	sample/sec: 77.654	loss: 2.056	reconstruct_loss: 2.056	KLD_loss: 0.000
+   step: 35(global step: 35)	sample/sec: 77.751	loss: 1.682	reconstruct_loss: 1.681	KLD_loss: 0.001
+   [Plateau Metric] step: 39 loss: 1700371756103124513701494784.000 reconstruct_loss: 1696594689330963519620775936.000 KLD_loss: 3777113350190000207036416.000
+   Saving checkpoints for 40 into data_autogenome/data_test/experiments/models/res_vae_demo/1105_013120/hyper_lr0.017883212500000002_decay_ratio_list_(0.60.60.6)_start_size_256_keep_prob_1.0/best_model.ckpt.
+   ...
+   ```
+
+
+4. 预测数据。根据第3步所训练的模型结构及模型参数，对于给定features数据，输出`latent vector`和`reconstruction data`数据
+
+   ```python
+   automl.predict()
+   ```
+
+   日志如下所示：
+
+   ```javascript
+   ----------In Prediction stage 
+   Restoring parameters from data_autogenome/data_test/experiments/models/res_vae_demo/1105_013120/hyper_lr0.017883212500000002_decay_ratio_list_(0.60.60.6)_start_size_256_keep_prob_1.0/best_model.ckpt-1040
+   Running local_init_op.
+   Done running local_init_op.
+   step: 9	batch/sec: 69.090
+   step: 19	batch/sec: 69.454
+   	[20 batches]
+   latent_vector and reconstruction x  values file is: "data_autogenome/data_test/experiments/output_files/res_vae_demo/1105_013120/res_vae_predicted_latent_vector_data_frame.csv" and "data_autogenome/data_test/experiments/output_files/res_vae_demo/1105_013120/res_vae_predicted_recon_x_data_frame.csv"
+   ```
+
+   得到的latent vector数据可以进一步聚类，与其他方希方法比较，如下所示：
+
+   ![](../images/vae_vs.PNG)
+
+## 附录
+AutoGenome文章：[AutoGenome: An AutoML Tool for Genomic Research](https://www.biorxiv.org/content/10.1101/842526v1)
+
+
+
+
+
+
+
+
+
+
+

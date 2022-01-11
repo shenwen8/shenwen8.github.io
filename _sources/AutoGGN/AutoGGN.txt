@@ -1,0 +1,793 @@
+# AutoGGN
+
+## AutoGGN介绍
+AutoGGN是一种利用图卷积神经网络整合生物分子相互作用网络及生物多组学数据的方法”。该方法很好利用生物体内调控网络特性，并整合多组学数据（基因表达、基因点突变、甲基化等组学数据），显著地提升了生物体样本的预测准确率。
+### 背景
+近年来生物组学技术快速发展，全基因组测序、转录组测序、Hi-C测序、LC-MS蛋白质组检测等多组学检测技术已经普及到生命科学领域的基础科研、药物研发和精准医疗等众多子领域。利用多组学数据进行更加精准的药物靶点挖掘、癌症相关基因发现等已经成为药物研发公司必备的一类研究项目。但是，生命发育成熟是一个极其复杂的过程，仅仅靠整合不同组学数据依然不能全面地发现生命现象背后的本质。因为，在生物体内的不同组学数据间，组学数据内的基因和基因间（或者代谢物间），普遍存在多样复杂的生物分子相互作用网络。AutoGGN能够整合生物多组学数据和生物体内的分子相互作用网络，从深层次挖掘隐含在生物分子相互作用网络和组学数据背后的生命规律，解决相关的生命科学问题。例如，通过综合蛋白互作网络和基因突变、表达数据等，预测癌症患者的癌症类型，协助患者更好的选择治疗方式、发现致病基因等。
+
+## 快速开始
+
+### 安装
+
+```shell
+# Setup environment using conda, env_gpu.yaml for CPU server
+conda env create -f env.yaml
+conda activate autogdl
+
+#get test data and install autogdl package
+wget https://github.com/EiHealth/EiHealth.github.io/blob/master/data/little_exp.tsv --no-check-certificate
+wget https://github.com/EiHealth/EiHealth.github.io/blob/master/data/little_learning_target.tsv --no-check-certificate
+pip install autogdl*.whl
+```
+
+### 使用
+
+```python
+# autogenome_biogdl is a branch version of AutoGGN developled to integrate single-omics data and molecular interaction networks
+import autogenome_biogdl as ag_gdl
+
+# create automl instance from a default config file
+automl_gdl= ag_gdl.auto()
+
+# or from a user-defined config file
+automl_gdl= ag_gdl.auto("config.yaml")
+
+# train to get the best hyperparameters and a trained model
+automl_gdl.train()
+
+# evaluate 
+automl_gdl.evaluate()
+
+# predict
+automl_gdl.predict()
+
+# interprete
+automl_gdl.explain()
+```
+
+## Config文件配置详解
+```javascript
+project_name: exp1        // Project name
+
+device:
+  gpu_per_instance: 1        // GPU number to use
+  cpu_per_instance: 8        // CPU number to use
+
+search_algorithm:
+  random_search:        // Algorithm for learning_rate, weight_decay searching
+    params:
+      - type: discrete_param        // [discrete_param/continuous_param]
+        name: learning_rate        // Name of parameter to search
+        values: [0.001, 0.002, 0.003, 0.004, 0.005]        // values of parameter to search
+      - type: discrete_param
+        name: weight_decay
+        values: [1e-5, 1e-4, 1e-3]
+  mbnas:        // Algorithm for activation, num_layers, embedding_dim, channels searching
+    params:
+      - type: discrete_param
+        name: activation
+        values: ['sigmoid', 'relu']
+      - type: discrete_param
+        name: num_layers
+        values: [2, 3]
+      - type: discrete_param
+        name: embedding_dim
+        values: [8, 16]
+      - type: discrete_param
+        name: channels
+        values: [4, 8, 16]
+
+data:
+  data_url: /home/wenshen/auto_gdl/sample_data/small/        // Dataset path
+  sample_file: feature        // Features file name for training
+  label_file: label        // Labels file name for training
+  adjlist: adjlist        // Adjlist file name for training
+  test_sample_file: test_x.csv        // Features file name for evaluating
+  test_label_file: test_y.csv        // Labels file name for evaluating
+  predict_sample_file: test_x.csv        // Features file name for predicting
+
+trainer:
+  train_url: /home/wenshen/result        // Dir to save models, logs and output files
+  graph_format: adjlist        // [adjlist/pickle]
+  save_result: True        // Whether to save results or not
+  num_epochs: 10        // Epochs for hyperparams tunning
+  seed: 0        // random seed for train/validation split
+  aggregation: None        [None/hierarchy/random/kmeans] Aggregation clusting method, used to reduce the number of nodes after each convolution
+  agg_reduce: 2        // Aggregation reduce factor
+  gating: False        // Whether to add gate layer or not
+  dropout: True        // Whether to add Dropout or not
+  metrics: acc        // [acc/f1] Evaluation metrics 
+  split_spec: 0.8        // Split size of train and validation
+  label_dim: 1        // Label dimension
+  batch_size: 50        // Batch size
+  num_classes: 10        // Number of classes in dataset
+  log_every_n_epochs: 1        // Print logs every n epochs
+  num_workers: 4        // Number of graph cpnvolution workers
+
+explainer:
+  plot_type: bar      // Plot type for feature importance graph
+  features_name_file: /home/wenshen/auto_gdl/sample_data/small/gene_names        // Path of features name file
+  num_samples: 80        // Number of samples used to calculate shap value
+  ranked_outputs: 20        // Number of top features to include in the plot
+
+
+```
+
+## Gene GCN案例
+
+- [配置文件](##配置文件)
+- [使用](##使用)
+
+
+
+Gene GCN案例以一个十分类任务为例，`feature`数据包含9000个samples，5129个features。
+
+```bash
+> wc feature | awk '{print $1}'  # 打印行数
+9000
+> 'sed -n '1,1p' feature | awk -F',' '{print NF-1}  # 打印列数
+5129
+```
+
+`label`数据为十类，分别为900。
+```bash
+> awk -F',' '{print $2}' label | sort | uniq -c | awk '{print $2 " " $1}' # 打印各个类别的样本数
+0 900
+1 900
+2 900
+3 900
+4 900
+5 900
+6 900
+7 900
+8 900
+9 900
+```
+
+`adjlist`数据为features相互作用的邻接表，行分别为5129个feature， 列为与该feature有相互作用关系的其他features。
+```bash
+> wc adjlist | awk '{print $1}'   # 打印行数
+5129
+```
+
+### 配置文件
+#### GPU版本
+
+首先，准备配置文件，具体如下所示：
+```javascript
+project_name: SC980        // Project name
+
+device:
+  gpu_per_instance: 1        // GPU number to use
+  cpu_per_instance: 8        // CPU number to use
+
+search_algorithm:
+  random_search:        // Algorithm for learning_rate, weight_decay searching
+    params:
+      - type: discrete_param        // [discrete_param/continuous_param]
+        name: learning_rate        // Name of parameter to search
+        values: [0.001, 0.002, 0.003, 0.004, 0.005]        // values of parameter to search
+      - type: discrete_param
+        name: weight_decay
+        values: [1e-5, 1e-4, 1e-3]
+  mbnas:        // Algorithm for activation, num_layers, embedding_dim, channels searching
+    params:
+      - type: discrete_param
+        name: activation
+        values: ['sigmoid', 'relu']
+      - type: discrete_param
+        name: num_layers
+        values: [2, 3]
+      - type: discrete_param
+        name: embedding_dim
+        values: [8, 16]
+      - type: discrete_param
+        name: channels
+        values: [4, 8, 16]
+
+data:
+  data_url: /home/wenshen/auto_gdl/sample_data/small/        // Dataset path
+  sample_file: feature        // Features file name for training
+  label_file: label        // Labels file name for training
+  adjlist: adjlist        // Adjlist file name for training
+  test_sample_file: test_x.csv        // Features file name for evaluating
+  test_label_file: test_y.csv        // Labels file name for evaluating
+  predict_sample_file: test_x.csv        // Features file name for predicting
+
+trainer:
+  train_url: /home/wenshen/try_res        // Dir to save models, logs and output files
+  graph_format: adjlist        // [adjlist/pickle]
+  save_result: True        // Whether to save results or not
+  num_epochs: 10        // Epochs for hyperparams tunning
+  seed: 0        // random seed for train/validation split
+  aggregation: None        [None/hierarchy/random/kmeans] Aggregation clusting method, used to reduce the number of nodes after each convolution
+  agg_reduce: 2        // Aggregation reduce factor
+  gating: False        // Whether to add gate layer or not
+  dropout: True        // Whether to add Dropout or not
+  metrics: acc        // [acc/f1] Evaluation metrics 
+  split_spec: 0.8        // Split size of train and validation
+  label_dim: 1        // Label dimension
+  batch_size: 50        // Batch size
+  num_classes: 10        // Number of classes in dataset
+  log_every_n_epochs: 1        // Print logs every n epochs
+  num_workers: 4        // Number of graph cpnvolution workers
+
+explainer:
+  plot_type: bar      // Plot type for feature importance graph
+  features_name_file: /home/wenshen/auto_gdl/sample_data/small/gene_names        // Path of features name file
+  num_samples: 500        // Number of samples used to calculate shap value
+  ranked_outputs: 20        // Number of top features to include in the plot
+```
+#### CPU版本
+
+首先，准备配置文件，具体如下所示：
+```javascript
+project_name: SC980        // Project name
+
+device:
+  gpu_per_instance: 0        // GPU number to use
+  cpu_per_instance: 8        // CPU number to use
+
+search_algorithm:
+  random_search:        // Algorithm for learning_rate, weight_decay searching
+    params:
+      - type: discrete_param        // [discrete_param/continuous_param]
+        name: learning_rate        // Name of parameter to search
+        values: [0.001, 0.002, 0.003, 0.004, 0.005]        // values of parameter to search
+      - type: discrete_param
+        name: weight_decay
+        values: [1e-5, 1e-4, 1e-3]
+  mbnas:        // Algorithm for activation, num_layers, embedding_dim, channels searching
+    params:
+      - type: discrete_param
+        name: activation
+        values: ['sigmoid', 'relu']
+      - type: discrete_param
+        name: num_layers
+        values: [2, 3]
+      - type: discrete_param
+        name: embedding_dim
+        values: [8, 16]
+      - type: discrete_param
+        name: channels
+        values: [4, 8, 16]
+
+data:
+  data_url: /home/wenshen/auto_gdl/sample_data/small/        // Dataset path
+  sample_file: feature        // Features file name for training
+  label_file: label        // Labels file name for training
+  adjlist: adjlist        // Adjlist file name for training
+  test_sample_file: test_x.csv        // Features file name for evaluating
+  test_label_file: test_y.csv        // Labels file name for evaluating
+  predict_sample_file: test_x.csv        // Features file name for predicting
+
+trainer:
+  train_url: /home/wenshen/try_res        // Dir to save models, logs and output files
+  graph_format: adjlist        // [adjlist/pickle]
+  save_result: True        // Whether to save results or not
+  num_epochs: 10        // Epochs for hyperparams tunning
+  seed: 0        // random seed for train/validation split
+  aggregation: None        [None/hierarchy/random/kmeans] Aggregation clusting method, used to reduce the number of nodes after each convolution
+  agg_reduce: 2        // Aggregation reduce factor
+  gating: False        // Whether to add gate layer or not
+  dropout: True        // Whether to add Dropout or not
+  metrics: acc        // [acc/f1] Evaluation metrics 
+  split_spec: 0.8        // Split size of train and validation
+  label_dim: 1        // Label dimension
+  batch_size: 50        // Batch size
+  num_classes: 10        // Number of classes in dataset
+  log_every_n_epochs: 1        // Print logs every n epochs
+  num_workers: 4        // Number of graph cpnvolution workers
+
+explainer:
+  plot_type: bar      // Plot type for feature importance graph
+  features_name_file: /home/wenshen/auto_gdl/sample_data/small/gene_names        // Path of features name file
+  num_samples: 500        // Number of samples used to calculate shap value
+  ranked_outputs: 20        // Number of top features to include in the plot
+```
+
+### 使用
+#### GPU版本
+
+AutoGenome-BioGDL的使用主要包含以下几步：
+
+1. 导入autogenome_biogdl包
+
+   ```python
+   import autogenome_biogdl as ag_gdl
+   ```
+
+2. 读取配置文件，配置文件如上述所示
+
+   ```python
+   automl_gdl = ag_gdl.auto("./GeneGCN_single_cell_expression_ppi.yaml")
+   ```
+
+   配置文件读取成功后，会打印如下日志：
+   ```javascript
+   ==========================================================
+   ----------Use the config from ./GeneGCN_single_cell_expression_ppi.yaml
+   ----------Split parameters for autosearch and GDL
+   ----------Build gcn extensions
+   ----------Split yamls for autosearch
+   ==========================================================
+   #################################################################################
+   #                                                                               #
+   #                                                                               #
+            Ready to search the best hyper parameters for SC980 GeneGCN model
+   #                                                                               #
+   #                                                                               #
+   #################################################################################
+   ```
+
+3. 训练模型。根据配置文件中训练参数进行模型训练，将数据集划分为训练集:验证集为8:2，使用训练集数据进行训练，同时在验证集数据上进行评估，保存在验证集数据上评价指标（trainer.metrics: "acc"）更好的模型和参数到相应文件夹（trainer.train_url: "/home/wenshen/try_res"）中的`models`文件夹中。
+
+   ```python
+   automl_gdl.train()
+   ```
+
+   训练过程中，使用autosearch搭配两种算法（random search和mbnas）对learning_rate, weight_decay, activation, num_layers, embedding_dim, channels进行最优参数搜索，每一种参数组合会训练一定的epoch数（trainer.num_epochs），挑选结果最好的作为最终模型结构参数并保存，训练过程中在验证集上进行评估。
+   
+   训练过程中部分日志如下:
+   ```javascript
+   ----------In Hyper & Training Search stage
+   platform.python_version(): 3.6.10
+   Results writing to local_dir : /mnt/data3/wenshen/SC980/result/autosearch_results/451644f4-fbe7-11ea-a771-b99e3b0f8bf8
+   Log dir is made: /mnt/data3/wenshen/SC980/result/autosearch_results/451644f4-fbe7-11ea-a771-b99e3b0f8bf8
+   [2020-09-21 16:48:52,854][search_policy.py: 181][WARNING]  Restore directory missing, AutoSearch will start without warm boot.
+   {'learning_rate': 0.005, 'weight_decay': 0.0001}
+   {'learning_rate': 0.004, 'weight_decay': 0.001}
+   {'learning_rate': 0.004, 'weight_decay': 0.001}
+   {'learning_rate': 0.005, 'weight_decay': 0.001}
+   {'learning_rate': 0.005, 'weight_decay': 0.0001}
+   == Status ==
+   Memory usage on this node: 7.2/62.9 GiB
+   Using FIFO scheduling algorithm.
+   Resources requested: 8/8 CPUs, 1/1 GPUs, 0.0/62.89 GiB heap, 0.0/4.3 GiB objects
+   Result logdir: /mnt/data3/wenshen/SC980/result/autosearch_results/451644f4-fbe7-11ea-a771-b99e3b0f8bf8/ModelartsFunctionRunner
+   Number of trials: 5 (1 RUNNING, 4 PENDING)
+   +----------------------------------+----------+-------+----------------+-----------------+
+   | Trial name                       | status   | loc   | weight_decay   | learning_rate   |
+   |----------------------------------+----------+-------+----------------+-----------------|
+   | ModelartsFunctionRunner_46b47e70 | RUNNING  |       |                |                 |
+   | ModelartsFunctionRunner_46b4b07a | PENDING  |       |                |                 |
+   | ModelartsFunctionRunner_46b4d7ee | PENDING  |       |                |                 |
+   | ModelartsFunctionRunner_46b4fd28 | PENDING  |       |                |                 |
+   | ModelartsFunctionRunner_46b521ea | PENDING  |       |                |                 |
+   +----------------------------------+----------+-------+----------------+-----------------+
+    ...
+   ```
+
+
+
+4. 评估模型。根据上步所训练的模型结构及模型参数，评估在`data.test_sample_file`和`data.test_label_file`上表现，分类模型输出`accuracy`值, `classification_report`和`confusion matrix`。
+
+   ```python
+   automl_gdl.evaluate()
+   ```
+
+   部分日志如下所示：
+   ```javascript
+   ----------In Evaluation stage
+   Restoring parameters from /mnt/data3/wenshen/SC980/result/models/SC980/0921_164750/d465c6d0/d465c6d0_model/variables/variables
+   Restoring parameters from /mnt/data3/wenshen/SC980/result/models/SC980/0921_164750/d465c6d0/d465c6d0_model/variables/variables
+   metrics acc:0.917
+   The detail metrics is:
+   {'0': {'precision': 0.8446601941747572, 'recall': 0.87, 'f1-score': 0.8571428571428571, 'support': 100}, '1': {'precision': 0.9574468085106383, 'recall': 0.9, 'f1-score': 0.9278350515463918, 'support': 100}, '2': {'precision': 0.8571428571428571, 'recall': 0.84, 'f1-score': 0.8484848484848485, 'support': 100}, '3': {'precision': 0.9509803921568627, 'recall': 0.97, 'f1-score': 0.9603960396039604, 'support': 100}, '4': {'precision': 0.9583333333333334, 'recall': 0.92, 'f1-score': 0.9387755102040817, 'support': 100}, '5': {'precision': 0.875, 'recall': 0.98, 'f1-score': 0.9245283018867924, 'support': 100}, '6': {'precision': 0.9375, 'recall': 0.9, 'f1-score': 0.9183673469387755, 'support': 100}, '7': {'precision': 0.875, 'recall': 0.84, 'f1-score': 0.8571428571428572, 'support': 100}, '8': {'precision': 0.9230769230769231, 'recall': 0.96, 'f1-score': 0.9411764705882353, 'support': 100}, '9': {'precision': 1.0, 'recall': 0.99, 'f1-score': 0.9949748743718593, 'support': 100}, 'accuracy': 0.917, 'macro avg': {'precision': 0.9179140508395373, 'recall': 0.917, 'f1-score': 0.916882415791066, 'support': 1000}, 'weighted avg': {'precision': 0.9179140508395371, 'recall': 0.917, 'f1-score': 0.9168824157910658, 'support': 1000}}
+   ----------Save evaluation results under /mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750
+   numexpr.utils:NumExpr defaulting to 8 threads.
+   Confusion matrix plot is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_confusion_matrix.pdf/png'
+   ```
+   evaluate阶段将输出评估的`classification_report`csv文件和`confusion_matrix`csv/png/pdf文件，保存到`output_files`文件夹中。
+   
+   得到的confusion matrix图如下所示，图数字大小会根据类别数多少进行调整，x轴为真值，y轴为预测值：
+
+   ![](../images/500/SC980_confusion_matrix.png)
+
+5. 预测数据。根据第3步所训练的模型结构及模型参数，对于给定features数据（`data.predict_sample_file`），分类问题预测其类别，并输出到对应的csv文件中。
+
+   ```python
+   automl_gdl.predict()
+   ```
+
+   日志如下所示：
+
+   ```javascript
+   ----------In Prediction stage
+   Restoring parameters from /mnt/data3/wenshen/SC980/result/models/SC980/0921_164750/d465c6d0/d465c6d0_model/variables/variables
+   Restoring parameters from /mnt/data3/wenshen/SC980/result/models/SC980/0921_164750/d465c6d0/d465c6d0_model/variables/variables
+   ----------Save prediction results in /mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_predicted_result_data_frame.csv
+   ```
+
+   如日志所示，将输出预测的`predicted_result_data_frame`文件，文件第一列为样本名，第二列`predicted_result`为预测的类别，其余列为各个类别的log_softmax值。
+
+6. 变量重要性排序。根据第3步所训练的模型结构及模型参数，对变量重要性进行排序，输出各个类别变量重要性，`explainer`中需要指定变量名对应的文件。
+
+   ```python
+   automl_gdl.explain()
+   ```
+
+   对模型变量重要性进行排序，输出日志如下：
+
+   ```javascript
+   ----------In explaination stage
+   Restoring parameters from /mnt/data3/wenshen/SC980/result/models/SC980/0921_164750/d465c6d0/d465c6d0_model/variables/variables
+   Restoring parameters from /mnt/data3/wenshen/SC980/result/models/SC980/0921_164750/d465c6d0/d465c6d0_model/variables/variables
+   Using TensorFlow backend.
+   ----------Computing shap_values with 500  examples and 5129 features
+   shap_values every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class0_shap_values.csv'
+   shap_values every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class1_shap_values.csv'
+   shap_values every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class2_shap_values.csv'
+   shap_values every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class3_shap_values.csv'
+   shap_values every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class4_shap_values.csv'
+   shap_values every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class5_shap_values.csv'
+   shap_values every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class6_shap_values.csv'
+   shap_values every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class7_shap_values.csv'
+   shap_values every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class8_shap_values.csv'
+   shap_values every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class9_shap_values.csv'
+   importance plot is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class0_feature_importance_summary_dot.pdf/png'
+   importance plot is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class1_feature_importance_summary_dot.pdf/png'
+   importance plot is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class2_feature_importance_summary_dot.pdf/png'
+   importance plot is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class3_feature_importance_summary_dot.pdf/png'
+   importance plot is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class4_feature_importance_summary_dot.pdf/png'
+   importance plot is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class5_feature_importance_summary_dot.pdf/png'
+   importance plot is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class6_feature_importance_summary_dot.pdf/png'
+   importance plot is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class7_feature_importance_summary_dot.pdf/png'
+   importance plot is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class8_feature_importance_summary_dot.pdf/png'
+   importance plot is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class9_feature_importance_summary_dot.pdf/png'
+   features orders in all classes is saved in '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_features_orders.csv'
+   importance plot for every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class1_feature_importance_summary.pdf/png'
+   importance plot for every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class3_feature_importance_summary.pdf/png'
+   importance plot for every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class6_feature_importance_summary.pdf/png'
+   importance plot for every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class2_feature_importance_summary.pdf/png'
+   importance plot for every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class8_feature_importance_summary.pdf/png'
+   importance plot for every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class0_feature_importance_summary.pdf/png'
+   importance plot for every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class4_feature_importance_summary.pdf/png'
+   importance plot for every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class5_feature_importance_summary.pdf/png'
+   importance plot for every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class7_feature_importance_summary.pdf/png'
+   importance plot for every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class9_feature_importance_summary.pdf/png'
+   importance plot is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_classTotal_feature_importance_summary_bar.pdf/png'
+   ```
+   
+   运行结束后将输出各个类别的变量重要性条图和点图和总的变量重要性图，如下所示：
+   
+   总的变量重要性图：
+
+   ![](../images/500/SC980_classTotal_feature_importance_summary_bar.png)
+
+   class 0变量重要性条图：
+
+   ![](../images/500/SC980_class0_feature_importance_summary.png)
+
+   class 1变量重要性条图：
+
+   ![](../images/500/SC980_class1_feature_importance_summary.png)
+   
+   class 2变量重要性条图：
+
+   ![](../images/500/SC980_class2_feature_importance_summary.png)
+   
+   class 3变量重要性条图：
+
+   ![](../images/500/SC980_class3_feature_importance_summary.png)
+   
+   class 4变量重要性条图：
+
+   ![](../images/500/SC980_class4_feature_importance_summary.png)
+   
+   class 5变量重要性条图：
+
+   ![](../images/500/SC980_class5_feature_importance_summary.png)
+   
+   class 6变量重要性条图：
+
+   ![](../images/500/Pancancer-SC980_class6_feature_importance_summary.png)
+   
+   class 7变量重要性条图：
+
+   ![](../images/500/SC980_class7_feature_importance_summary.png)
+   
+   class 8变量重要性条图：
+
+   ![](../images/500/SC980_class8_feature_importance_summary.png)
+   
+   class 9变量重要性条图：
+
+   ![](../images/500/SC980_class9_feature_importance_summary.png)
+   
+   class 0变量重要性点图：
+
+   ![](../images/500/SC980_class0_feature_importance_summary_dot.png)
+
+   class 1变量重要性点图：
+   ![](../images/500/SC980_class1_feature_importance_summary_dot.png)
+   
+   class 2变量重要性点图：
+
+   ![](../images/500/SC980_class2_feature_importance_summary_dot.png)
+
+   class 3变量重要性点图：
+   ![](../images/500/SC980_class3_feature_importance_summary_dot.png)
+   
+   class 4变量重要性点图：
+
+   ![](../images/500/SC980_class4_feature_importance_summary_dot.png)
+
+   class 5变量重要性点图：
+   ![](../images/500/SC980_class5_feature_importance_summary_dot.png)
+   
+   class 6变量重要性点图：
+
+   ![](../images/500/SC980_class6_feature_importance_summary_dot.png)
+
+   class 7变量重要性点图：
+   ![](../images/500/SC980_class7_feature_importance_summary_dot.png)
+   
+   class 8变量重要性点图：
+
+   ![](../images/500/SC980_class8_feature_importance_summary_dot.png)
+
+   class 9变量重要性点图：
+   ![](../images/500/SC980_class9_feature_importance_summary_dot.png)
+
+
+#### CPU版本
+
+AutoGenome-BioGDL的使用主要包含以下几步：
+
+1. 导入autogenome_biogdl包
+
+   ```python
+   import autogenome_biogdl as ag_gdl
+   ```
+
+2. 读取配置文件，配置文件如上述所示
+
+   ```python
+   automl_gdl = ag_gdl.auto("./GeneGCN_single_cell_expression_ppi.yaml")
+   ```
+
+   配置文件读取成功后，会打印如下日志：
+   ```javascript
+   ==========================================================
+   ----------Use the config from ./GeneGCN_single_cell_expression_ppi.yaml
+   ----------Split parameters for autosearch and GDL
+   ----------Build gcn extensions
+   ----------Split yamls for autosearch
+   ==========================================================
+   #################################################################################
+   #                                                                               #
+   #                                                                               #
+            Ready to search the best hyper parameters for SC980 GeneGCN model
+   #                                                                               #
+   #                                                                               #
+   #################################################################################
+   ```
+
+3. 训练模型。根据配置文件中训练参数进行模型训练，将数据集划分为训练集:验证集为8:2，使用训练集数据进行训练，同时在验证集数据上进行评估，保存在验证集数据上评价指标（trainer.metrics: "acc"）更好的模型和参数到相应文件夹（trainer.train_url: "/home/wenshen/try_res"）中的`models`文件夹中。
+
+   ```python
+   automl_gdl.train()
+   ```
+
+   训练过程中，使用autosearch搭配两种算法（random search和mbnas）对learning_rate, weight_decay, activation, num_layers, embedding_dim, channels进行最优参数搜索，每一种参数组合会训练一定的epoch数（trainer.num_epochs），挑选结果最好的作为最终模型结构参数并保存，训练过程中在验证集上进行评估。
+   
+   训练过程中部分日志如下:
+   ```javascript
+   ----------In Hyper & Training Search stage
+   platform.python_version(): 3.6.10
+   Results writing to local_dir : /mnt/data3/wenshen/SC980/result_cpu/autosearch_results/9d582a88-fbec-11ea-9693-9b5c05ab9893
+   Log dir is made: /mnt/data3/wenshen/SC980/result_cpu/autosearch_results/9d582a88-fbec-11ea-9693-9b5c05ab9893
+   [2020-09-21 17:27:08,637][search_policy.py: 181][WARNING]  Restore directory missing, AutoSearch will start without warm boot.
+   {'learning_rate': 0.003, 'weight_decay': 0.0001}
+   {'learning_rate': 0.005, 'weight_decay': 0.0001}
+   {'learning_rate': 0.004, 'weight_decay': 1e-05}
+   {'learning_rate': 0.002, 'weight_decay': 1e-05}
+   {'learning_rate': 0.004, 'weight_decay': 0.001}
+   == Status ==
+   Memory usage on this node: 14.4/62.9 GiB
+   Using FIFO scheduling algorithm.
+   Resources requested: 8/8 CPUs, 0/1 GPUs, 0.0/62.89 GiB heap, 0.0/4.3 GiB objects
+   Result logdir: /mnt/data3/wenshen/SC980/result_cpu/autosearch_results/9d582a88-fbec-11ea-9693-9b5c05ab9893/ModelartsFunctionRunner
+   Number of trials: 5 (1 RUNNING, 4 PENDING)
+   +----------------------------------+----------+-------+-----------------+----------------+
+   | Trial name                       | status   | loc   | learning_rate   | weight_decay   |
+   |----------------------------------+----------+-------+-----------------+----------------|
+   | ModelartsFunctionRunner_9f24560c | RUNNING  |       |                 |                |
+   | ModelartsFunctionRunner_9f2486d6 | PENDING  |       |                 |                |
+   | ModelartsFunctionRunner_9f24b73c | PENDING  |       |                 |                |
+   | ModelartsFunctionRunner_9f25a73c | PENDING  |       |                 |                |
+   | ModelartsFunctionRunner_9f25cd5c | PENDING  |       |                 |                |
+   +----------------------------------+----------+-------+-----------------+----------------+
+    ...
+   ```
+
+
+
+4. 评估模型。根据上步所训练的模型结构及模型参数，评估在`data.test_sample_file`和`data.test_label_file`上表现，分类模型输出`accuracy`值, `classification_report`和`confusion matrix`。
+
+   ```python
+   automl_gdl.evaluate()
+   ```
+
+   部分日志如下所示：
+   ```javascript
+   ----------In Evaluation stage
+   New DB Info: /mnt/data3/wenshen/SC980/result_cpu/models/SC980/0921_172615/bbaf042e/bbaf042e_model/adjlist
+   start loading graph /mnt/data3/wenshen/SC980/result_cpu/models/SC980/0921_172615/bbaf042e/bbaf042e_model/adjlist
+   finish loading.
+   number of nodes = 5129
+   number of edges = 20691
+   time of loading graph = 6.17976 ms
+   INFO:tensorflow:Restoring parameters from /mnt/data3/wenshen/SC980/result_cpu/models/SC980/0921_172615/bbaf042e/bbaf042e_model/variables/variables
+   INFO:tensorflow:Restoring parameters from /mnt/data3/wenshen/SC980/result_cpu/models/SC980/0921_172615/bbaf042e/bbaf042e_model/variables/variables
+   INFO:root:metrics acc:0.924
+   INFO:root:The detail metrics is:
+   {'0': {'precision': 0.9042553191489362, 'recall': 0.85, 'f1-score': 0.8762886597938143, 'support': 100}, '1': {'precision': 0.8846153846153846, 'recall': 0.92, 'f1-score': 0.9019607843137256, 'support': 100}, '2': {'precision': 0.8723404255319149, 'recall': 0.82, 'f1-score': 0.8453608247422681, 'support': 100}, '3': {'precision': 0.9607843137254902, 'recall': 0.98, 'f1-score': 0.9702970297029702, 'support': 100}, '4': {'precision': 0.92, 'recall': 0.92, 'f1-score': 0.92, 'support': 100}, '5': {'precision': 0.8691588785046729, 'recall': 0.93, 'f1-score': 0.8985507246376813, 'support': 100}, '6': {'precision': 0.9320388349514563, 'recall': 0.96, 'f1-score': 0.9458128078817734, 'support': 100}, '7': {'precision': 0.9473684210526315, 'recall': 0.9, 'f1-score': 0.9230769230769231, 'support': 100}, '8': {'precision': 0.9504950495049505, 'recall': 0.96, 'f1-score': 0.9552238805970149, 'support': 100}, '9': {'precision': 1.0, 'recall': 1.0, 'f1-score': 1.0, 'support': 100}, 'accuracy': 0.924, 'macro avg': {'precision': 0.9241056627035438, 'recall': 0.9239999999999998, 'f1-score': 0.923657163474617, 'support': 1000}, 'weighted avg': {'precision': 0.9241056627035437, 'recall': 0.924, 'f1-score': 0.923657163474617, 'support': 1000}}
+   INFO:auto:----------Save evaluation results under /mnt/data3/wenshen/SC980/result_cpu/output_files/SC980/0921_172615
+   INFO:numexpr.utils:NumExpr defaulting to 8 threads.
+   INFO:auto:Confusion matrix plot is '/mnt/data3/wenshen/SC980/result_cpu/output_files/SC980/0921_172615/SC980_confusion_matrix.pdf/png'
+   ```
+   evaluate阶段将输出评估的`classification_report`csv文件和`confusion_matrix`csv/png/pdf文件，保存到`output_files`文件夹中。
+   
+   得到的confusion matrix图如下所示，图数字大小会根据类别数多少进行调整，x轴为真值，y轴为预测值：
+
+   ![](../images/500/SC980_confusion_matrix.png)
+
+5. 预测数据。根据第3步所训练的模型结构及模型参数，对于给定features数据（`data.predict_sample_file`），分类问题预测其类别，并输出到对应的csv文件中。
+
+   ```python
+   automl_gdl.predict()
+   ```
+
+   日志如下所示：
+
+   ```javascript
+   INFO:auto:----------In Prediction stage
+   New DB Info: /mnt/data3/wenshen/SC980/result_cpu/models/SC980/0921_172615/bbaf042e/bbaf042e_model/adjlist
+   start loading graph /mnt/data3/wenshen/SC980/result_cpu/models/SC980/0921_172615/bbaf042e/bbaf042e_model/adjlist
+   finish loading.
+   number of nodes = 5129
+   number of edges = 20691
+   time of loading graph = 8.89547 ms
+   INFO:tensorflow:Restoring parameters from /mnt/data3/wenshen/SC980/result_cpu/models/SC980/0921_172615/bbaf042e/bbaf042e_model/variables/variables
+   INFO:tensorflow:Restoring parameters from /mnt/data3/wenshen/SC980/result_cpu/models/SC980/0921_172615/bbaf042e/bbaf042e_model/variables/variables
+   INFO:auto:----------Save prediction results in /mnt/data3/wenshen/SC980/result_cpu/output_files/SC980/0921_172615/SC980_predicted_result_data_frame.csv
+   ```
+
+   如日志所示，将输出预测的`predicted_result_data_frame`文件，文件第一列为样本名，第二列`predicted_result`为预测的类别，其余列为各个类别的log_softmax值。
+
+6. 变量重要性排序。根据第3步所训练的模型结构及模型参数，对变量重要性进行排序，输出各个类别变量重要性，`explainer`中需要指定变量名对应的文件。
+
+   ```python
+   automl_gdl.explain()
+   ```
+
+   对模型变量重要性进行排序，输出日志如下：
+
+   ```javascript
+   ----------In explaination stage
+   Restoring parameters from /mnt/data3/wenshen/SC980/result/models/SC980/0921_164750/d465c6d0/d465c6d0_model/variables/variables
+   Restoring parameters from /mnt/data3/wenshen/SC980/result/models/SC980/0921_164750/d465c6d0/d465c6d0_model/variables/variables
+   Using TensorFlow backend.
+   ----------Computing shap_values with 500  examples and 5129 features
+   shap_values every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class0_shap_values.csv'
+   shap_values every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class1_shap_values.csv'
+   shap_values every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class2_shap_values.csv'
+   shap_values every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class3_shap_values.csv'
+   shap_values every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class4_shap_values.csv'
+   shap_values every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class5_shap_values.csv'
+   shap_values every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class6_shap_values.csv'
+   shap_values every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class7_shap_values.csv'
+   shap_values every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class8_shap_values.csv'
+   shap_values every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class9_shap_values.csv'
+   importance plot is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class0_feature_importance_summary_dot.pdf/png'
+   importance plot is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class1_feature_importance_summary_dot.pdf/png'
+   importance plot is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class2_feature_importance_summary_dot.pdf/png'
+   importance plot is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class3_feature_importance_summary_dot.pdf/png'
+   importance plot is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class4_feature_importance_summary_dot.pdf/png'
+   importance plot is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class5_feature_importance_summary_dot.pdf/png'
+   importance plot is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class6_feature_importance_summary_dot.pdf/png'
+   importance plot is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class7_feature_importance_summary_dot.pdf/png'
+   importance plot is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class8_feature_importance_summary_dot.pdf/png'
+   importance plot is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class9_feature_importance_summary_dot.pdf/png'
+   features orders in all classes is saved in '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_features_orders.csv'
+   importance plot for every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class1_feature_importance_summary.pdf/png'
+   importance plot for every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class3_feature_importance_summary.pdf/png'
+   importance plot for every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class6_feature_importance_summary.pdf/png'
+   importance plot for every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class2_feature_importance_summary.pdf/png'
+   importance plot for every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class8_feature_importance_summary.pdf/png'
+   importance plot for every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class0_feature_importance_summary.pdf/png'
+   importance plot for every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class4_feature_importance_summary.pdf/png'
+   importance plot for every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class5_feature_importance_summary.pdf/png'
+   importance plot for every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class7_feature_importance_summary.pdf/png'
+   importance plot for every classes is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_class9_feature_importance_summary.pdf/png'
+   importance plot is '/mnt/data3/wenshen/SC980/result/output_files/SC980/0921_164750/SC980_classTotal_feature_importance_summary_bar.pdf/png'
+   ```
+   
+   运行结束后将输出各个类别的变量重要性条图和点图和总的变量重要性图，如下所示：
+   
+   总的变量重要性图：
+
+   ![](../images/500/SC980_classTotal_feature_importance_summary_bar.png)
+
+   class 0变量重要性条图：
+
+   ![](../images/500/SC980_class0_feature_importance_summary.png)
+
+   class 1变量重要性条图：
+
+   ![](../images/500/SC980_class1_feature_importance_summary.png)
+   
+   class 2变量重要性条图：
+
+   ![](../images/500/SC980_class2_feature_importance_summary.png)
+   
+   class 3变量重要性条图：
+
+   ![](../images/500/SC980_class3_feature_importance_summary.png)
+   
+   class 4变量重要性条图：
+
+   ![](../images/500/SC980_class4_feature_importance_summary.png)
+   
+   class 5变量重要性条图：
+
+   ![](../images/500/SC980_class5_feature_importance_summary.png)
+   
+   class 6变量重要性条图：
+
+   ![](../images/500/Pancancer-SC980_class6_feature_importance_summary.png)
+   
+   class 7变量重要性条图：
+
+   ![](../images/500/SC980_class7_feature_importance_summary.png)
+   
+   class 8变量重要性条图：
+
+   ![](../images/500/SC980_class8_feature_importance_summary.png)
+   
+   class 9变量重要性条图：
+
+   ![](../images/500/SC980_class9_feature_importance_summary.png)
+   
+   class 0变量重要性点图：
+
+   ![](../images/500/SC980_class0_feature_importance_summary_dot.png)
+
+   class 1变量重要性点图：
+   ![](../images/500/SC980_class1_feature_importance_summary_dot.png)
+   
+   class 2变量重要性点图：
+
+   ![](../images/500/SC980_class2_feature_importance_summary_dot.png)
+
+   class 3变量重要性点图：
+   ![](../images/500/SC980_class3_feature_importance_summary_dot.png)
+   
+   class 4变量重要性点图：
+
+   ![](../images/500/SC980_class4_feature_importance_summary_dot.png)
+
+   class 5变量重要性点图：
+   ![](../images/500/SC980_class5_feature_importance_summary_dot.png)
+   
+   class 6变量重要性点图：
+
+   ![](../images/500/SC980_class6_feature_importance_summary_dot.png)
+
+   class 7变量重要性点图：
+   ![](../images/500/SC980_class7_feature_importance_summary_dot.png)
+   
+   class 8变量重要性点图：
+
+   ![](../images/500/SC980_class8_feature_importance_summary_dot.png)
+
+   class 9变量重要性点图：
+   ![](../images/500/SC980_class9_feature_importance_summary_dot.png)
+
+
+## 附录
+AutoGGN文章：[AutoGGN: A gene graph network AutoML tool for multi-omics research](https://doi.org/10.1016/j.ailsci.2021.100019)
+
+

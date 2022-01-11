@@ -1,0 +1,1871 @@
+# AutoGenome
+## AutoGenome-Introduction
+
+AutoGenome is an end-to-end automated genomic deep learning framework. By utilizing the proposed RFCN architectures, automatic hyper-parameter search and neural architecture search algorithms, AutoGenome can train high-performance deep learning models for various kinds of genomic profiling data automatically. To make researchers better understand the trained models, AutoGenome can assess the feature importance and export the most important features for supervised learning tasks, and the representative latent vectors for unsupervised learning tasks. We envision AutoGenome to become a popular tool in genomic studies.
+
+### Background
+
+Deep learning have made great successes in traditional fields like computer vision (CV), natural language processing (NLP) and speech processing. Those achievements greatly inspire researchers in genomic study and make deep learning in genomics a very hot topic. Convolutional neural network (CNN) and recurrent neural network (RNN) are frequently used for genomic sequence prediction problems; multiple layer perception (MLP) and auto-encoders (AE) are frequently used for genomic profiling data like RNA expression data and gene mutation data. 
+
+However, for non-sequence data like genomic profiling data, where RNA expression value, gene mutation status, or gene copy number variations from whole genome are profiled, CNN or RNN will be invalid because there are no spatial or temporal relationships in the data. For genomic profiling data, the underlying mechanism is the gene regulatory pathway/network: several genes interact with (activate or inhibit) each other and compose a structured hieratical network to regulate the biological functions, which is the key to model genomic profiling data using deep learning.
+
+In genomic area, most studies are still limited to handcrafted DNN structures and parameter space. Hyper parameter selection and network architecture selection are needed.
+
+To address those challenges and facilitate genomic studies with deep learning, we build AutoGenome, an end-to-end AutoML framework for genomic study. In AutoGenome, we propose residual fully-connected neural network (RFCN) and its variants, and validate their performance outperforming MLP and VAE. We further adopt hyper-parameter search and efficient network architecture search (ENAS) algorithm to AutoGenome, to enable it automatically searching for novel neural network architectures. We show that AutoGenome can be easily used to train customized deep learning model, evaluate the model performances, and interpret the results for genomic profiling data.
+
+### Features
+
+- MLP: For genomics data, MLP (Multilayer Perceptron) structure is often used as for its simple and flexible features. AutoGenome has a search strategy for the MLP network structure. By setting the search space for the number of network layers and the number of hidden neurons, and using  hyperparameter search method, the optimal network structure is selected based on the performance of the candidate network structure.
+
+  
+
+- RFCN-ResNet,RFCN-DenseNet: Inspired by ResNet and DenseNet, AutoGenome introduced skip connections into genomics data. According to the idea of CASH in AutoML (Combined Algorithm Selection and Hyperparameter optimization), model selection and hyperparameter tuning are combined into the same problem, and the network structure of the RFCN-ResNet and RFCN-Densenet networks is selected by means of hyperparameter search, so that it can target different Data to select a better network structure.
+
+  
+
+- RRFCN: MLP, RFCN-ResNet, and RFCN-DenseNet are all based on a certain prior knowledge of the network structure, and the search space is limited to the way of Grid Search in hyperparameter search; in order to make the search space more flexible, AutoGenome introduces ENAS (Efficient Neural Architecture Search ). ENAS is a type of NAS. Because it innovatively shares the parameters of the network structure, the efficiency of neural network structure search is greatly improved, and it overcomes the shortcomings of the huge computing power cost of NAS. Through the strategy of reinforcement learning, the NAS optimizes the controller model-LSTM that generates the sub-model structure through the optimization strategy. The LSTM model can generate the size of each layer of the sub-model and candidate jumps in the sub-model according to the preset number of network layers of the sub-model. Candidate operators used in traditional ENAS structures often include various operations such as convolution, while AutoGenome reduces the operators to fully connected operations, making them suitable for genomics data.
+
+  
+
+- Res-VAE: MLP, RFCN-ResNet, RFCN-DenseNet, and ENAS are all belongs to supervised learning and can be applied to regression and classification problems. But in addition, in the field of biomedicine, unsupervised learning such as dimensionality reduction is often used. Therefore, on the basis of traditional VAE, AutoGenome realizes a residual fully-connected variational auto-encoder (Res-VAE) by adding skip connections. In the traditional VAE system, the encoder compresses the input into hidden variables of smaller dimensions by reducing the number of network neurons in each layer, and the decoder reconstructs the input data by increasing the number of neurons in each layer starting from the hidden variables. Res-VAE adds skip connections to both the encoder and decoder, making the network structure more flexible. By minimizing the sum of reconstruction error and Kullback-Leibler divergence (KLD) error, Res-VAE learns the essential characteristics of the data from the original data, and these characteristics are stored in hidden variables, thereby achieving the purpose of dimensionality reduction, which will be used in further analysis.
+
+  
+
+- Explanation: In the medical field, researchers are not just satisfied with the effects of models. The particularity of medical treatment has caused people to think more about the reasons for the effects of models. The interpretability of deep neural networks has limited the application of artificial intelligence in the rigorous medical field. Therefore, the interpretability of models in the medical field is essential. How to gain insight into the black box of neural network models? A lot of frontier research has been carried out in this area. SHAP (SHapley Additive exPlanations) uses cooperative game contributions and income distribution to quantify the contribution of each feature to the model. To make it easier for researchers to study deep learning models, we have introduced SHAP into AutoGenome. Given a deep learning model, SHAP will calculate the marginal contribution of each feature to the overall prediction, called the SHAP value. AutoGenome can visualize the characteristic importance of each gene to the predicted category, or the distribution of the SHAP value of each gene to the predicted category. The visualization of these results provides meaningful insights into the interpretability of deep learning models.
+
+## Quick-start
+
+### Install
+
+```shell
+# Setup environment using conda, env_gpu.yml for GPU server
+conda env create -f env.yml
+conda activate autogenome
+
+#get example data and install autogenome package
+wget  https://github.com/EiHealth/EiHealth.github.io/blob/master/data/little_exp.tsv --no-check-certificate 
+wget  https://github.com/EiHealth/EiHealth.github.io/blob/master/data/little_learning_target.tsv --no-check-certificate 
+pip install autogenome*.whl
+```
+
+### Step by step Running
+
+```python
+import autogenome as ag
+
+# create automl instance from a default config file
+automl= ag.auto()
+
+# or from a user-defined config file
+automl= ag.auto("config.json")
+
+# train to get the best hyperparameters and a trained model
+automl.train()
+
+# evaluate 
+automl.evaluate()
+
+# predict
+automl.predict()
+
+# interprete
+automl.explain()
+```
+
+## Introduction of config.json
+
+```javascript
+{
+  "name": "exp1",        // Project name
+
+  "model": {
+    "type": "ResNet",        // [MLP/ResNet/densnet/VAE/enas]
+    "args": {
+        "output_classes": 5,        // Args for Supervised classs
+        "is_regression": false,        //[true/false] whether running a regression
+        "multi_tasks": false        //[true/false] whether running a multi_tasks regression
+    }                
+  },
+
+  "data_train": {        //Needed in automl.train()
+        "type": "DataLoader",        //[DataLoader/BigDataLoader] Selecting data loader, using BigDataLoader when data file is big
+        "args":{
+            "data_dir": "/autogenome/data/",        //Dataset path
+            "features_file": "little_exp.tsv",        //Features file name
+            "labels_file": "little_learning_target.tsv",        //Labels file name
+            "validation_split": 0.2,        //Size of validation dataset, float(portion) 
+            "shuffle": true,        //Shuffle training data before splitting
+            "validation_features": null,        //Validation features file name, needed when validation_split is null
+            "validation_labels": null
+        }
+    },
+
+  "data_evaluate": {                                        //Needed in automl.evaluate()
+        "type": "DataLoader",
+        "args": {
+            "data_dir": "/autogenome/data/",
+            "features_file": "little_exp.tsv",
+            "labels_file": "little_learning_target.tsv"
+        }
+    },
+
+  "data_predict": {        //Needed in automl.predict()
+        "type": "DataLoader",
+        "args": {
+            "data_dir": "/autogenome/data/",
+            "features_file": "little_exp.tsv",
+
+        }
+    },
+
+  "input_fn": {
+        "capacity": 50000,        //An integer. The maximum number of elements in the queue.
+        "enqueue_many": true,        //Whether each tensor in `tensor_list` is a single example.
+        "min_after_dequeue": 0,        //Minimum number elements in the queue after a dequeue, used to ensure a level of mixing of elements.
+        "num_threads": 16,         //The number of threads enqueuing `tensor_list`.
+        "seed":0,        //Seed for the random shuffling within the queue.
+        "allow_smaller_final_batch":true        //(Optional) Boolean. If `True`, allow the final batch to be smaller if there are insufficient items left in the queue.
+
+    },
+
+ // ["trainer"]for MLP/ResNet/DenseNet/res-VAE
+  "trainer": {
+        "hyper_selector": true,        // Whether to use hyper_selector or not
+        "batch_size": 64,        //Batch_size
+        "save_dir": "experiments/",        // Dir to save models, logs and output files
+        "monitor": "accuracy",        // [accuracy/loss] A Tensor. Quantity to be monitored
+        "selected_mode": "max",       //[min/max] mode to select best model when monitor is bigger[max] or smaller[min]
+        "num_gpus": 1,        // Num_gpus
+        "evaluate_every_n_epochs": 1,        //Trigger the evaluation after running n epochs of training.
+        "min_delta": 0.001,        //Minimum change in the monitored quantity to qualify as an improvement, i.e. an absolute change of less than min_delta, will count as no improvement.
+        "patience": 10,        //Number of epochs with no improvement after which learning rate will be decayed.
+        "decay_lr": 10,        //Learning rate is decayed by dividing `decay_lr` when no improvement is detected.
+        "decay_min_delta": 0.001,        //Minimum change in the monitored quantity to qualify as an improvement between last monitored quantity and current monitored quantity with different learning rate.
+        "decay_patience": 1,         //Number of times with decaying learning rate after which training will be stopped.
+        "pre_train_epoch": 10,        // epoches for hyperparams tunning
+        "select_by_eval": true,         //Select best hyper-parameters by eval metric or by train metric. Default is False.
+        "max_steps": 64000,         // Steps for training, will be changed into epoches
+        "auto_batch": false,         //If True, an extra dimension of batch_size will be expanded to the first dimension of the return value from get_split. Default to True.
+        "log_every_n_steps": 10,        //Logging every n steps. Default is 10.
+        "save_model_secs": 0,    // The frequency, in seconds, that a checkpoint is saved using a default checkpoint saver.  `save_model_steps` will added. If both are provided, then only `save_model_secs` is used. Default 600.
+        "init_learning_rate": 0.0001,        // Init rate while hyperparamter search, if set `null`, the init rate will calculated automatically
+        "end_learning_rate": 0.1,        //End rate while hyperparamter search, if set `null`, the end rate will calculated automatically
+        "loss": "cross_entropy",         //["cross_entropy"/"focal_loss"] using "focal_loss" when data are class imbalanced
+        "selected_mode": "max"         //["max"/"min"]  
+    },
+ // ["trainer"] for enas
+  "trainer":{
+        "child_num_layers": 6,        // set the model layers
+        "log_every_n_steps": 10,        //Logging every n steps. Default is 10.
+        "batch_size": 512,       
+        "max_number_of_epoches_in_search": 500,        // num of epoches in search part
+        "max_number_of_epoches_in_fixed": 200,        // num of epoches to train
+        "top_k_candidates": 5,        // number of candidate saved from search and will be trained soon
+        "child_lr_reg": 1e-4,         // the parameter of l2 regularization loss
+        "max_search_channel": 1024,        // the max channel of search space      
+        "save_dir": "experiments/enas/"
+  },
+
+
+  "optimizer": {
+    "type": "Adam"         //[adam/sgd/adadelta/adagrad/adamw/ftrl/momentum/rmsprop/kfac/dynamic_momentum/lamb]
+  },
+
+  // ["evaluator"] for  MLP/ResNet/DenseNet/res-VAE
+  "evaluator": {
+        "checkpoint_path": "default",         // Checkpoint_path to restore
+        "log_every_n_steps": 2,         //Logging every n steps.
+        "output_every_n_steps": 1,        // Logging output every n steps.
+        "max_number_of_steps": 100         // The max number of steps for evaluation
+        "batch_size":64
+
+    },
+
+  // ["evaluator"] for  enas
+  "evaluator":{
+        "checkpoint_path": "default",
+        "log_every_n_steps": 1,
+        "output_every_n_steps": 1,
+        "max_number_of_steps": 30,
+        "batch_size": 100,
+        "arc": null         // The architecture of model, when checkpoint_path is not default
+  },
+
+  // ["predictor"] for  MLP/ResNet/DenseNet/res-VAE
+  "predictor": {
+        "checkpoint_path": "default",
+        "log_every_n_steps": 10,
+        "output_every_n_steps": 1,
+        "max_number_of_steps": 100, 
+        "batch_size":64
+    },
+
+   // ["predictor"] for  enas
+   "predictor"：{
+        "checkpoint_path": "default",
+        "log_every_n_steps": 1,
+        "output_every_n_steps": 1,
+        "max_number_of_steps": 300,
+        "batch_size": 150,
+        "arc": null        // The architecture of model, when checkpoint_path is not default
+    },
+
+  "param_spec": {
+        "type": "origin_params",        // The init model params before hyperparameter search 
+        "args": {
+            "MLP": {
+                "FC1_SIZE": 512,
+                "FC2_SIZE": 512,
+                "FC3_SIZE": 512,
+                "FC4_SIZE": 512,
+                "FC5_SIZE": 512,
+                "FC6_SIZE": 512,
+                "keep_prob": 0.8,
+                "output_nonlinear": null
+            },                   // MLP model params, keep_prob is set into first laryer; output_nonlinear is set at the last layer
+            "ResNet": {
+                "n_latent": 128,
+                "n_blocks": 2,
+                "keep_prob": 0.8,
+                "output_nonlinear": null
+            },                  // ResNet model params
+            "DenseNet": {
+                "growth_rate":32,
+                "bn_size":16,
+                "block_config": [2, 2, 2, 2],
+                "keep_prob": 0.8,
+                "output_nonlinear": null
+            },                  // DenseNet model params
+            "VAE":{
+                "keep_prob":0.6,
+                "start_size":4096,
+                "decay_ratio_list":[0.6, 0.8, 0.8, 0.8]
+            },                  // VAE model params
+            "optimizer_param": {
+                "best_lr": 0.001
+            }                           // Params for optimizer_param
+        }
+    },
+
+  "hyper_param_spec": {
+        "type": "hyper_params",         // Select the model through performance in different combination.
+        "args": {
+            "MLP": {
+                "FC1_SIZE": [ 64, 32, 16, 8],
+                "FC2_SIZE": [ 64, 32, 16, 8],
+                "FC3_SIZE": [ 64, 32, 16, 8],
+                "FC4_SIZE": [ 64, 32, 16, 8],
+                "FC5_SIZE": [ 64, 32, 16, 8],
+                "FC6_SIZE": [ 64, 32, 16, 8],
+                "keep_prob": [ 0.8, 1.0],
+                "output_nonlinear": [null, "relu", "tanh", "sigmoid"]
+            },
+            "ResNet": {
+                "n_latent": [4096, 2048, 1024, 512, 256, 128, 64, 32, 16, 8],
+                "n_blocks": [1, 2, 3, 5],
+                "keep_prob": [0.2, 0.4, 0.6, 0.8, 1.0],
+                "output_nonlinear": [null, "relu", "tanh", "sigmoid"]
+            },
+            "DenseNet": {
+                "growth_rate": [512, 256, 128, 64, 32, 16, 8],
+                "bn_size": [16, 32],
+                "block_config": [[2, 3, 4], [3, 4, 5]],
+                "keep_prob": [0.2, 0.4, 0.6, 0.8, 1.0],
+                "output_nonlinear": [null, "relu", "tanh", "sigmoid"]
+            },
+
+            "VAE":{
+                "keep_prob":[0.2, 0.4, 0.6, 0.8, 1.0],
+                "start_size":[4096, 2048, 1024, 512, 256, 128, 64, 32], 
+                "num_layers":[4,3],
+                "decay_ratio":[0.6, 0.5]
+            }
+            "optimizer_param": {
+
+            }
+        }
+        }
+}
+
+```
+
+## A Tutorial of Using AutoGenome from HUAWEI CLOUD
+
+AutoGenome is freely available from HUAWEI CLOUD EIHealth and ModelArts Platform. This is a tutorial of running AutoGenome from HUAWEI CLOUD ModelArts and EIHealth Platform.
+
+### Use AutoGenome from HUAWEI CLOUD ModelArts
+
+AutoGenome is now freely available to public users from HUAWEI Cloud ModelArts AI platform. Registered users could use the free notebook services to test AutoGenome (The one hour free GPU quota is sufficient for most genome AutoML tasks). 
+
+Here is a short tutorial of how to launch AutoGenome from the free notebook services on ModelArts. 
+
+#### Step 1: Log in
+
+Access [HUAWEI CLOUD ModelArts](https://console.huaweicloud.com/modelarts/?region=cn-north-4&locale=en-us#/dashboard) and enter your username and password. And Click “**Log In**”. Please register an account if you don’t have one.
+
+![](../images/tutorial_0.png)
+
+#### Step 2: Access to the ModelArts Development
+
+Click the “**DevEnviron**” and then click the “**Create**” button on the top of the page to create a new notebook environment.
+
+![](../images/tutorial_1.png)
+
+#### Step 3: Specify the notebook environment
+
+In the new page, specify the name of environment, chose “Python2” for “Work Environment”, chose “GPU” for “Type”, chose “[Limited-time free] GPU:1*p100 CPU” for “Instance Flavor”, then click “**Next**”. 
+
+![](../images/tutorial_2.png)
+
+Click “**Submit**” on the subsequent page, it may take several minutes for the environment to start.
+
+![](../images/tutorial_3.png)
+
+Click “Back to Notebook List”.
+
+![](../images/tutorial_4.png)
+
+#### Step 4: Open the notebook environment
+
+It may take a few seconds for the notebook environment to start.
+
+![](../images/tutorial_5.png)
+
+Once the status turn into “**Running**”, please click the “**Open**” button to open this notebook.
+
+![](../images/tutorial_6.png)
+
+Click on “Open JupyterLab”, the page will then jump to JupyterLab.
+
+![](../images/tutorial_7.png)
+
+#### Step 5: Step-by-step AutoGenome tutorials for AI modeling
+
+In JupyterLab, click on any AutoGenome notebook examples from “**ModeArts Examples**”, then click on “**Create a copy**”, you can then run the step-by-step notebook tutorials.
+
+![](../images/tutorial_8.png)
+
+#### Step 6: Upload and play with your own data
+
+Use JupiterLab, Click on “File Browser” sidebar, then Click “Upload” icon to upload your own data, for data larger than 100 Mb, you will need to use OBS (https://support.huaweicloud.com/engineers-modelarts/modelarts_23_0105.html ) 
+
+![](../images/tutorial_9.png)
+
+### Use AutoGenome from EIHealth Platform
+
+HUAWEI EIHealth is the healthcare AI platform for genomic research, clinical research and drug discovery. This is a short tutorial of how to use AutoGenome from EIHealth. 
+
+#### Step 1: Log in
+
+Access [EIHealth](https://eihealth.ai/) (This is a demo site, if your company or institute purchased EIHealth, it will be from a different URL) and enter the registered username and password, then Click “**Log In**”, you can also switch to Chinese language. 
+
+![](../images/tutorial_10.png)
+
+#### Step 2: Create the notebook development 
+
+Click “**Development**” – “**Codeset**” – “**AutoGenome-Examples**” – “**Create Notebook**” and enter into the Notebook page. 
+
+![](../images/tutorial_11.png)
+
+And then specify the parameters of the notebook and click “**Create**”.
+
+![](../images/tutorial_12.png)
+
+A seconds later, the notebook will be created successfully and then Click “**Open**” to start the notebook development. 
+
+![](../images/tutorial_13.png)
+
+ 
+
+#### Step 3: Open the Notebook Examples 
+
+Choose “AutoGenome_Example”. 
+
+![](../images/tutorial_14.png)
+
+The directory contains several examples, click on one folder.
+
+![](../images/tutorial_15.png)
+
+Click one of the ipynb file and this action will open a notebook example of AutoGenome.
+
+![](../images/tutorial_16.png)
+
+#### Step 4: Step-by-step AutoGenome tutorials for AI modeling
+
+The notebook contains all codes to show how to use AutoGenome step by step for supervised learning and un-supervised learning. The users can also run this notebook to reproduce the results of our manuscript.
+
+![](../images/tutorial_17.png)
+
+#### Step 5: Upload and play with your own data
+
+Go to the working directory, click upload button
+
+![](../images/tutorial_18.png)
+
+Selected your own data and click Upload button, you can then play with your own data from the notebook.
+
+![](../images/tutorial_19.png)
+
+
+## Example of MLP
+
+MLP case uses a binary classification task as an example. The `features` data` little_exp.tsv` contains 100 samples and 23361 features. It may taks around ~5 minutes to finish this case.
+
+```bash
+> wc little_exp.tsv | awk '{print $1}'  # rows
+100
+> sed -n '1,1p' little_exp.tsv | awk '{print NF}'  # columns
+23361
+```
+
+`target` data are of two types, 70 and 30 respectively.
+
+```bash
+> grep -c 0 little_learning_target.tsv
+70
+> grep -c 1 little_learning_target.tsv
+30
+```
+
+
+
+First, prepare the configuration file, as shown below:
+
+### config.json  in use
+
+```javascript
+{
+    "name": "mlp_demo",   // Project name
+
+    "model": {
+        "type": "MLP",
+        "args": {
+            "output_classes": 2}   // Number of classes
+    },
+
+    "data_train": {
+        "type": "DataLoader",
+        "args":{
+            "data_dir": "/data_autogenome/data_test",   //The folder where the data is located, it is recommended to use an absolute path
+            "features_file": "little_exp.tsv",  //File of features
+            "labels_file": "little_learning_target.tsv",   //File of target
+            "validation_split": 0.2,   //Validation set ratio
+            "shuffle": true,   //Whether to shuffle the data during training
+            "delimiter": " "   //Delimiter in data, default: '\t'
+        }
+    },
+
+    "data_evaluate": {
+        "type": "DataLoader",
+        "args": {
+            "data_dir": "./data_autogenome/data_test",
+            "features_file": "little_exp.tsv",   //用/File for evaluation
+            "labels_file": "little_learning_target.tsv",  //target for evaluation
+            "delimiter": " "
+        }
+    },
+
+    "data_predict": {
+        "type": "DataLoader",
+        "args": {
+            "data_dir": "./data_autogenome/data_test", 
+            "features_file": "little_exp.tsv",   //File for prediction
+            "delimiter": " "
+        }
+    },
+
+    "input_fn": {
+        "num_threads": 16   //Number of threads for reading data
+    },
+
+    "trainer": {
+        "hyper_selector": true,   //[true/false]，Whether to perform hyperparameter search
+        "batch_size": 64,   
+        "save_dir": "./experiments",   //Folder where logs, model parameters, and results are saved
+        "monitor": "accuracy",   //[accuracy/loss/f1_score]，Evaluate metrics on the validation set during training
+        "num_gpus": 1,   
+        "patience": 20,   //After the number of consecutive epochs do not improve the performance on the validation set, stop training
+        "pre_train_epoch": 10,   //The number of epochs trained in each group of parameters in Hyperparameter search phase
+        "max_steps": 64000,   //Maximum running steps to train. When the patience is large, the max_steps steps will be trained. Max_steps * batch_size / num_samples is the number of epochs corresponding to the training.
+        "loss": "cross_entropy",
+        "selected_mode": "max"   //[max/min]Bigger or smaller is better when evaluation
+    },
+
+    "optimizer": {
+        "type": "adam"    //[adam/sgd/adadelta/adagrad/adamw/ftrl/momentum/rmsprop/kfac/dynamic_momentum/lamb]
+    },
+
+    "evaluator": {
+        "max_number_of_steps": 1,
+        "batch_size":100
+
+    },
+
+    "predictor": {
+        "max_number_of_steps": 1,
+        "batch_size":100
+    },
+
+    "explainer": {
+        "type": "Shap",
+        "args": {
+            "plot_type": "bar",  //[bar/dot/violin/layered_violin]
+            "features_name_file": "/data_autogenome/data_test/names_2.txt",  //变File of feature name ，one column，rows are equall to the number of features
+            "num_samples": 80,   //Number of sample used in explainer
+            "ranked_outputs": 20  //Number of important variables will be ploted
+        }
+    },
+
+    "param_spec": {   //Initial parameters
+        "type": "origin_params",
+        "args": {
+            "MLP": {
+                "layers_list": [64， 128],  
+                "keep_prob": 1,
+                "output_nonlinear": "sigmoid"
+            },
+            "optimizer_param": {
+                "learning_rate": 0.0001
+            }
+        }
+    },
+
+    "hyper_param_spec": {  //Hyperparameter search space
+        "type": "hyper_params",
+        "args": {
+            "MLP": {
+                "size_candidates": [128, 64],   //Search space for Nodes at each layer
+                "num_layers": [2, 3],  
+                "keep_prob": [0.8, 1.0],
+                "output_nonlinear": [null, "relu", "tanh", "sigmoid"]
+            },
+            "optimizer_param": {
+
+            }
+        }
+}
+}
+
+```
+
+
+
+### Step by step
+
+The use of AutoGenome mainly includes the following steps:
+
+1. import autogenome
+
+   ```python
+   import autogenome as ag
+   ```
+
+2. Load  the configuration file, as shown above
+
+   ```python
+   automl = ag.auto("/data_autogenome/data_test/json_hub_simple/densenet_test.json")
+   ```
+
+   After the configuration file is successfully read, the following log is printed:
+
+   ```javascript
+   ==========================================================
+   ----------Use the config from 
+   /data_autogenome/data_test/json_hub_simple/mlp_test.json
+   ----------Initialize data_loader class
+   ----------Initialize Optimizer
+   ----------Initialize hyper_param_spec class 
+   ----------Initialize param_spec class 
+   ==========================================================
+   #################################################################################
+   #                                                                               #
+   #                                                                               #
+            Ready to search the best hyper parameters for MLP model            
+   #                                                                               #
+   #                                                                               #
+   #################################################################################
+   ```
+
+   
+
+3. Train the model. Model training is performed according to the parameters in the configuration file. Data set is divided into training set : validation set in ratio of 8: 2. The training set data is used for training, and the validation set data is used for the evaluation performance of temporary searched model in real-time. High performance models and parameters are saved to the `models` folder in the corresponding folder (trainer.saver:" ./experiments ")
+
+   ```python
+   automl.train()
+   ```
+
+   During training, the model is initialized to the parameters in `param_spec`, and then the parameter search is performed in the hyper-parameter search space` hyper_param_spec`. Each parameter combination will train a certain number of epochs (trainer.pre_train_epoch). After hyper-parameter search, parameters of the final model  is fixed. And then the final model will be trained again, to achieve a higher performance. The parameters of the final model are saved for further load.
+
+   Parts of logs during training are as follows:
+
+   ```javascript
+   ----------In Hyper & Training Search stage
+   ...
+   Pretraining: search parameter is layers_list, search value is (128, 64)
+   LR_RANGE_TEST From begin_lr 0.000010 To end_lr 0.100000, 
+   Graph was finalized.
+   Running local_init_op.
+   Done running local_init_op.
+   Running will end at step: 10
+   step: 0(global step: 0)	sample/sec: 218.444	loss: 0.805	accuracy: 0.484
+   ...
+   The model and events are saved in experiments/models/mlp_demo/1225_113835/hyper_lr0.08500150000000001_layers_list_(128128)_keep_prob_0.8_output_nonlinear_None
+   Graph was finalized.
+   Running local_init_op.
+   Done running local_init_op.
+   Running will end at step: 64000
+   step: 0(global step: 0)	sample/sec: 86.607	loss: 0.843	accuracy: 0.531
+   [Plateau Metric] step: 1 loss: 147.601 accuracy: 0.266
+   Saving checkpoints for 2 into experiments/models/mlp_demo/1225_113835/hyper_lr0.08500150000000001_layers_list_(128128)_keep_prob_0.8_output_nonlinear_None/best_model.ckpt.
+   [Plateau Metric] step: 3 loss: 64.228 accuracy: 0.266
+   [Plateau Metric] step: 5 loss: 67.668 accuracy: 0.328
+   Saving checkpoints for 6 into experiments/models/mlp_demo/1225_113835/hyper_lr0.08500150000000001_layers_list_(128128)_keep_prob_0.8_output_nonlinear_None/best_model.ckpt.
+   [Plateau Metric] step: 7 loss: 122.216 accuracy: 0.328
+   ...
+   step: 200(global step: 200)	sample/sec: 4496.934	loss: 0.000	accuracy: 1.000
+   [Plateau Metric] step: 201 loss: 0.046 accuracy: 0.953
+   [Plateau Metric] step: 203 loss: 0.034 accuracy: 0.953
+   [Plateau Metric] step: 205 loss: 0.025 accuracy: 1.000
+   Saving checkpoints for 206 into experiments/models/mlp_demo/1225_113835/hyper_lr0.08500150000000001_layers_list_(128128)_keep_prob_0.8_output_nonlinear_None/best_model.ckpt.
+   [Plateau Metric] step: 207 loss: 0.036 accuracy: 1.000
+   ...
+   ```
+
+   
+
+4. Evaluation. Evaluate the performance of final model on data specified on `data_evaluate`. Classification task model will output the accuracy and the confusion matrix.
+
+   ```python
+   automl.evaluate()
+   ```
+
+   Parts of logs are as follows:
+
+   ```javascript
+   ----------In Evaluation stage
+   Restoring parameters from experiments/models/mlp_demo/1225_113835/hyper_lr0.08500150000000001_layers_list_(128128)_keep_prob_0.8_output_nonlinear_None/best_model.ckpt-206
+   Running local_init_op.
+   Done running local_init_op.
+   loss: 0.005278169643133879	accuracy: 1.0		[1 batches]
+   Confusion matrix plot is 'experiments/output_files/mlp_demo/1225_113835/MLP_confusion_matrix.pdf'
+   ```
+   
+   The  confusion matrix is shown below. Size of the figure will adjust to the number of categories. The x-axis is true label and the y-axis is the predicted label.
+   
+   ![](../images/mlp_confusion_matrix.png)
+   
+
+   
+5. Prediction. Given input sample data, predict categories based on the final model trained in step 3. The category and softmax value of each sample will be saved in a csv file.
+
+   ```python
+   automl.predict()
+   ```
+
+   Part of logs are as follows:
+
+   ```javascript
+   ----------In Prediction stage 
+   Restoring parameters from experiments/models/mlp_demo/1225_113835/hyper_lr0.08500150000000001_layers_list_(128128)_keep_prob_0.8_output_nonlinear_None/best_model.ckpt-206
+   Running local_init_op.
+   Done running local_init_op.
+   	[1 batches]
+   Predicted values file is "experiments/output_files/mlp_demo/1225_113835/MLP_predicted_result_data_frame.csv"
+   ```
+
+   As shown in the log, the predicted csv file will be produced and saved. The first column of the file is `predicted_result`, and the second column of `softmax_value` is the softmax value of each sample.
+
+6. Explanation. Rank the importance of the features according to the final model trained in step 3 . The file corresponding to the variable name needs to be specified in the `explainer`.
+
+   ```python
+   automl.explain()
+   ```
+
+   Rank the importance of the model variables, and the log is as follows:
+
+   ```javascript
+   ----------Initialize Shap class
+   Restoring parameters from experiments/models/mlp_demo/1225_113835/hyper_lr0.08500150000000001_layers_list_(128128)_keep_prob_0.8_output_nonlinear_None/best_model.ckpt-206
+   ----------Computing shap_values with 80  examples and 23361 features
+   importance plot is 'experiments/output_files/mlp_demo/1225_113835/_dot0_feature_importance_summary.pdf'
+   importance plot is 'experiments/output_files/mlp_demo/1225_113835/_dot1_feature_importance_summary.pdf'
+   features orders in all classes is saved in 'experiments/output_files/mlp_demo/1225_113835/_features_orders.csv'
+   importance plot for every classes is 'experiments/output_files/mlp_demo/1225_113835/class_0feature_importance_summary.pdf'
+   importance plot for every classes is 'experiments/output_files/mlp_demo/1225_113835/class_1feature_importance_summary.pdf'
+   importance plot is 'experiments/output_files/mlp_demo/1225_113835/_barTotal_feature_importance_summary.pdf'
+   shap_values every classes is 'experiments/output_files/mlp_demo/1225_113835/_class_0shap_values.csv'
+   shap_values every classes is 'experiments/output_files/mlp_demo/1225_113835/_class_1shap_values.csv'
+   ```
+
+   Variable importance bar charts and dot charts and total variable importance charts for each category are produced, as shown below:
+
+   Importance map for all variable：
+
+   ![](../images/mlp_total_feature_importance_summary.png)
+
+   Features importance bar plot for class1:
+
+   ![](../images/mlp_class1_feature_importance_summary_bar.png)
+
+   Features importance bar plot for class0:
+
+   ![](../images/mlp_class0_feature_importance_summary_bar.png)
+
+   Features importance dot plot for class1:
+
+   ![](../images/mlp_class1_feature_importance_summary_dot.png)
+
+   Features importance dot plot for class0:
+   ![](../images/mlp_class0_feature_importance_summary_dot.png)
+
+
+## Example of RFCN-ResNet
+
+RFCN-ResNet case take a binary classification task as an example. The `features` data` little_exp.tsv` contains 100 samples and 23361 features. It may taks around ~5 minutes to finish this case.
+
+```bash
+> wc little_exp.tsv | awk '{print $1}'  # rows
+100
+> sed -n '1,1p' little_exp.tsv | awk '{print NF}'  # columns
+23361
+```
+
+`target` data are of two types, 70 and 30 respectively.
+
+```bash
+> grep -c 0 little_learning_target.tsv
+70
+> grep -c 1 little_learning_target.tsv
+30
+```
+
+
+
+First, prepare the configuration file, as shown below:
+
+### config.json  in use
+
+```javascript
+{
+    "name": "resnet_demo",  // Project name
+
+    "model": {
+        "type": "ResNet",
+        "args": {
+            "output_classes": 2}  // Number of classes
+    },
+
+    "data_train": {
+        "type": "DataLoader",
+        "args":{
+            "data_dir": "/data_autogenome/data_test",  //The folder where the data is located, it is recommended to use an absolute path
+            "features_file": "little_exp.tsv",   //File of features
+            "labels_file": "little_learning_target.tsv",   //File of target
+            "validation_split": 0.2,  //Validation set ratio
+            "shuffle": true,  //Whether to shuffle the data during training
+            "delimiter": " "  //Delimiter in data, default: '\t' 
+        }
+    },
+
+    "data_evaluate": {
+        "type": "DataLoader",
+        "args": {
+            "data_dir": "/data_autogenome/data_test",
+            "features_file": "little_exp.tsv",  //File for evaluation
+            "labels_file": "little_learning_target.tsv",  //target for evaluation
+            "delimiter": " "
+        }
+    },
+
+    "data_predict": {
+        "type": "DataLoader",
+        "args": {
+            "data_dir": "/data_autogenome/data_test",
+            "features_file": "little_exp.tsv",  //File for prediction
+            "delimiter": " "
+        }
+    },
+
+    "input_fn": {
+        "num_threads": 16  //Number of threads for reading data
+    },
+
+    "trainer": {
+        "hyper_selector": true,  //[true/false]，Whether to perform hyperparameter search
+        "batch_size": 64,  
+        "save_dir": "./experiments",  //Folder where logs, model parameters, and results are saved
+        "monitor": "accuracy",  //[accuracy/loss/f1_score]，Evaluate metrics on the validation set during training
+        "num_gpus": 1, 
+        "patience": 30,   //After the number of consecutive epochs do not improve the performance on the validation set, stop training
+        "pre_train_epoch": 10,  //The number of epochs trained in each group of parameters in Hyperparameter search phase
+        "max_steps": 64000,  //Maximum running steps to train. When the patience is large, the max_steps steps will be trained. Max_steps * batch_size / num_samples is the number of epochs corresponding to the training.
+        "loss": "cross_entropy",
+        "selected_mode": "max"   //[max/min]Bigger or smaller is better when evaluation
+    },
+
+    "optimizer": {
+        "type": "adam"  //[adam/sgd/adadelta/adagrad/adamw/ftrl/momentum/rmsprop/kfac/dynamic_momentum/lamb]
+    },
+
+    "evaluator": {
+        "max_number_of_steps": 10,
+        "batch_size":100
+    },
+
+    "predictor": {
+        "log_every_n_steps": 10,
+        "output_every_n_steps": 1,
+        "max_number_of_steps": 100,
+        "batch_size":100
+    },
+
+    "explainer": {
+        "type": "Explain",
+        "args": {
+            "mode": "shap",  // name of the method to run, "shap", "intgrad", "occlusion"
+            "features_name_file": "/data_autogenome/data_test/names_2.txt",  //File of feature name ，one column，rows are equall to the number of features
+            "plot_type": "bar",  //[bar/dot/violin/layered_violin]
+            "num_samples": 80,  //Number of sample used in explainer
+            "ranked_outputs": 20  //Number of important variables will be ploted
+        }
+    },
+
+    "param_spec": {   //Initial parameters
+        "type": "origin_params",
+        "args": {
+            "ResNet": {
+                "n_latent": 32,
+                "n_blocks": 2,
+                "keep_prob": 0.8,
+                "output_nonlinear": "sigmoid"
+            },
+            "optimizer_param": {
+                "learning_rate": 0.0001
+            }
+        }
+    },
+
+    "hyper_param_spec": {    //Hyperparameter search space
+        "type": "hyper_params",
+        "args": {
+            "ResNet": {
+                "n_latent": [128, 64, 32],
+                "n_blocks": [2, 3],
+                "keep_prob": [0.8, 1.0],
+                "output_nonlinear": [null, "relu", "tanh", "sigmoid"]
+            },
+            "optimizer_param": {
+
+            }
+        }
+}
+}
+
+```
+
+
+
+### Step by step
+
+There are six steps involved in the utilization of AutoGenome to construct an AI model:
+
+1. import autogenome
+
+   ```python
+   import autogenome as ag
+   ```
+
+2. Load the configuration file, as shown above
+
+   ```python
+   automl = ag.auto("/data_autogenome/data_test/json_hub_simple/resnet_test.json")
+   ```
+
+   If the configuration file is successfully loaded, the following log will printed:
+
+   ```javascript
+   ==========================================================
+   ----------Use the config from /data_autogenome/data_test/json_hub_simple/resnet_test.json
+   ----------Initialize data_loader class
+   ----------Initialize Optimizer
+   ----------Initialize hyper_param_spec class 
+   ----------Initialize param_spec class 
+   ==========================================================
+   #################################################################################
+   #                                                                               #
+   #                                                                               #
+            Ready to search the best hyper parameters for ResNet model            
+   #                                                                               #
+   #                                                                               #
+   #################################################################################
+   ```
+
+   
+
+3. Train the model. Model training is performed according to the parameters in the configuration file. Data set is divided into training set : validation set in ratio of 8: 2. The training set data is used for training, and the validation set data is used for the evaluation performance of temporary searched model in real-time. High performance models and parameters are saved to the `models` folder in the corresponding folder (trainer.saver:" ./experiments ")
+
+   ```python
+   automl.train()
+   ```
+
+   During training, the model is initialized to the parameters in `param_spec`, and then the parameter search is performed in the hyper-parameter search space` hyper_param_spec`. Each parameter combination will train a certain number of epochs (trainer.pre_train_epoch). After hyper-parameter search, parameters of the final model  is fixed. And then the final model will be trained again, to achieve a higher performance. The parameters of the final model are saved for further load.
+
+   Parts of logs during training are as follows:
+
+   ```javascript
+   ----------In Hyper & Training Search stage 
+   ...
+   Pretraining: search parameter is n_latent, search value is 32
+   LR_RANGE_TEST From begin_lr 0.000010 To end_lr 0.100000, 
+   Graph was finalized.
+   Running local_init_op.
+   Done running local_init_op.
+   Running will end at step: 10
+   step: 0(global step: 0)	sample/sec: 141.683	loss: 0.674	accuracy: 0.609
+   ...
+   [Plateau Metric] step: 163 loss: 1.213 accuracy: 0.828
+   [Plateau Metric] step: 165 loss: 0.726 accuracy: 0.906
+   Saving checkpoints for 166 into experiments/models/resnet_demo/1218_160039/hyper_lr0.08500150000000001_keep_prob_0.8_n_latent_128_output_nonlinear_None_n_blocks_2/best_model.ckpt.
+   [Plateau Metric] step: 167 loss: 1.827 accuracy: 0.828
+   [Plateau Metric] step: 169 loss: 1.776 accuracy: 0.828
+   [Plateau Metric] step: 171 loss: 0.910 accuracy: 0.891
+   [Plateau Metric] step: 173 loss: 0.207 accuracy: 0.984
+   Saving checkpoints for 174 into experiments/models/resnet_demo/1218_160039/hyper_lr0.08500150000000001_keep_prob_0.8_n_latent_128_output_nonlinear_None_n_blocks_2/best_model.ckpt.
+   [Plateau Metric] step: 175 loss: 0.181 accuracy: 0.984
+   ...
+   ```
+
+   
+
+4. Evaluation. Evaluate the performance of final model on data specified on `data_evaluate`. Classification task model will output the accuracy and the confusion matrix.
+
+   ```python
+   automl.evaluate()
+   ```
+
+   Parts of logs are as follows:
+
+   ```javascript
+   ----------In Evaluation stage 
+   Restoring parameters from experiments/models/resnet_demo/1218_160039/hyper_lr0.08500150000000001_keep_prob_0.8_n_latent_128_output_nonlinear_None_n_blocks_2/best_model.ckpt-200
+   Running local_init_op.
+   Done running local_init_op.
+   step: 1	batch/sec: 117.715	loss: 0.007	accuracy: 1.000
+   step: 3	batch/sec: 133.102	loss: 0.007	accuracy: 1.000
+   step: 5	batch/sec: 115.314	loss: 0.007	accuracy: 1.000
+   step: 7	batch/sec: 103.886	loss: 0.007	accuracy: 1.000
+   step: 9	batch/sec: 99.960	loss: 0.007	accuracy: 1.000
+   ...
+   loss: 0.006915087699890137	accuracy: 1.0		[100 batches]
+   Confusion matrix plot is 'experiments/output_files/resnet_demo/1218_160039/ResNet_confusion_matrix.pdf'
+   ```
+
+   The  confusion matrix is shown below. Size of the figure will adjust to the number of categories. The x-axis is true label and the y-axis is the predicted label.
+
+   ![](../images/resnet_confusion_matrix.png)
+
+   
+
+5. Prediction. Given input sample data, predict categories based on the final model trained in step 3. The category and softmax value of each sample will be saved in a csv file.
+
+   ```python
+   automl.predict()
+   ```
+
+   Part of logs are as follows:
+
+   ```javascript
+   ----------In Prediction stage 
+   Graph was finalized.
+   Restoring parameters from experiments/models/resnet_demo/1218_160039/hyper_lr0.08500150000000001_keep_prob_0.8_n_latent_128_output_nonlinear_None_n_blocks_2/best_model.ckpt-200
+   Running local_init_op.
+   Done running local_init_op.
+   step: 9	batch/sec: 110.194
+   	[10 batches]
+   Predicted values file is "experiments/output_files/resnet_demo/1218_160039/ResNet_predicted_result_data_frame.csv"
+   ```
+
+   As shown in the log, the predicted csv file will be produced and saved. The first column of the file is `predicted_result`, and the second column of `softmax_value` is the softmax value of each sample.
+
+6. Explanation. Rank the importance of the features according to the final model trained in step 3 . The file corresponding to the variable name needs to be specified in the `explainer`.
+
+   ```python
+   automl.explain()
+   ```
+
+   Rank the importance of the model variables, and the log is as follows:
+
+   ```javascript
+   ----------Initialize Shap class
+   Restoring parameters from experiments/models/resnet_demo/1218_160039/hyper_lr0.08500150000000001_keep_prob_0.8_n_latent_128_output_nonlinear_None_n_blocks_2/best_model.ckpt-200
+   ----------Computing shap_values with 80  examples and 23361 features
+   importance plot is 'experiments/output_files/resnet_demo/1218_160039/_dot0_feature_importance_summary.pdf'
+   importance plot is 'experiments/output_files/resnet_demo/1218_160039/_dot1_feature_importance_summary.pdf'
+   features orders in all classes is saved in 'experiments/output_files/resnet_demo/1218_160039/_features_orders.csv'
+   importance plot for every classes is 'experiments/output_files/resnet_demo/1218_160039/class_1feature_importance_summary.pdf'
+   importance plot for every classes is 'experiments/output_files/resnet_demo/1218_160039/class_0feature_importance_summary.pdf'
+   importance plot is 'experiments/output_files/resnet_demo/1218_160039/_barTotal_feature_importance_summary.pdf'
+   shap_values every classes is 'experiments/output_files/resnet_demo/1218_160039/_class_0shap_values.csv'
+   shap_values every classes is 'experiments/output_files/resnet_demo/1218_160039/_class_1shap_values.csv
+   ```
+
+   Variable importance bar charts and dot charts and total variable importance charts for each category are produced, as shown below:
+
+   Importance map for all variable：
+   ![](/images/resnet_total_feature_importance_summary.png)
+
+   Features importance bar plot for class1:
+   ![](/images/resnet_class1_feature_importance_summary_bar.png)
+   
+   Features importance bar plot for class0:
+   ![](/images/resnet_class0_feature_importance_summary_bar.png)
+   
+   class 1变量重要性点图：Features importance dot plot for class1:
+   ![](/images/resnet_class1_feature_importance_summary_dot.png)
+   
+   Features importance dot plot for class0:
+   ![](/images/resnet_class0_feature_importance_summary_dot.png)
+
+
+## Example of RFCN-DenseNet
+
+A binary classification task were used as an example to run RFCN-DenseNet. The `features` data` little_exp.tsv` contains 100 samples and 23361 features. It may taks around ~5 minutes to finish this case.
+
+```bash
+> wc little_exp.tsv | awk '{print $1}'  # rows
+100
+> sed -n '1,1p' little_exp.tsv | awk '{print NF}'  # columns
+23361
+```
+
+`target` data contains two types, 70 and 30 respectively.
+
+```bash
+> grep -c 0 little_learning_target.tsv
+70
+> grep -c 1 little_learning_target.tsv
+30
+```
+
+
+
+First, prepare the configuration file as shown below:
+
+### config.json  in use
+
+```javascript
+{
+    "name": "densenet_demo",  // Project name
+
+    "model": {
+        "type": "DenseNet",
+        "args": {
+            "output_classes": 2}  // Number of classes
+    },
+
+    "data_train": {
+        "type": "DataLoader",
+        "args":{
+            "data_dir": "/data_autogenome/data_test",  //The folder where the data is located, it is recommended to use an absolute path
+            "features_file": "little_exp.tsv",   //File of features
+            "labels_file": "little_learning_target.tsv",   //File of target
+            "validation_split": 0.2,  //Validation set ratio
+            "shuffle": true,  //Whether to shuffle the data during training
+            "delimiter": " "  //Delimiter in data, default: '\t' 
+        }
+    },
+
+    "data_evaluate": {
+        "type": "DataLoader",
+        "args": {
+            "data_dir": "/data_autogenome/data_test",
+            "features_file": "little_exp.tsv",  //File for evaluation
+            "labels_file": "little_learning_target.tsv",  //target for evaluation
+            "delimiter": " "
+        }
+    },
+
+    "data_predict": {
+        "type": "DataLoader",
+        "args": {
+            "data_dir": "/data_autogenome/data_test",
+            "features_file": "little_exp.tsv",  //File for prediction
+            "delimiter": " "
+        }
+    },
+
+    "input_fn": {
+        "num_threads": 16  //Number of threads for reading data
+    },
+
+    "trainer": {
+        "hyper_selector": true,  //[true/false]，Whether to perform hyperparameter search
+        "batch_size": 64,  
+        "save_dir": "./experiments",  //Folder where logs, model parameters, and results are saved
+        "monitor": "accuracy",  //[accuracy/loss/f1_score]，Evaluate metrics on the validation set during training
+        "num_gpus": 1,  
+        "patience": 30,   //After the number of consecutive epochs do not improve the performance on the validation set, stop training
+        "pre_train_epoch": 10,  //The number of epochs trained in each group of parameters in Hyperparameter search phase
+        "max_steps": 64000,  //Maximum running steps to train. When the patience is large, the max_steps steps will be trained. Max_steps * batch_size / num_samples is the number of epochs corresponding to the training.
+        "loss": "cross_entropy",
+        "selected_mode": "max"   //[max/min]Bigger or smaller is better when evaluation
+    },
+
+    "optimizer": {
+        "type": "adam"  //[adam/sgd/adadelta/adagrad/adamw/ftrl/momentum/rmsprop/kfac/dynamic_momentum/lamb]
+    },
+
+    "evaluator": {
+        "max_number_of_steps": 10,
+        "batch_size":100
+    },
+
+    "predictor": {
+        "log_every_n_steps": 10,
+        "output_every_n_steps": 1,
+        "max_number_of_steps": 100,
+        "batch_size":100
+    },
+
+    "explainer": {
+        "args": {
+            "features_name_file": "/data_autogenome/data_test/names_2.txt",  //File of feature name ，one column，rows are equall to the number of features
+            "plot_type": "bar",  //[bar/dot/violin/layered_violin]
+            "num_samples": 80,  //Number of sample used in explainer
+            "ranked_outputs": 20  //Number of important variables will be ploted
+        }
+    },
+
+    "param_spec": {                //Initial parameters
+        "type": "origin_params",
+        "args": {
+            "DenseNet": {
+                "growth_rate":32,
+                "bn_size":32,
+                "block_config": [2, 3],   //Block parameter in densenet
+                "keep_prob": 1,
+                "output_nonlinear": null
+            },
+            "optimizer_param": {
+                "learning_rate": 0.0001
+            }
+        }
+    },
+
+    "hyper_param_spec": {             //Hyperparameter search space
+        "type": "hyper_params",
+        "args": {
+            "DenseNet": {
+                "growth_rate": [64, 32],
+                "bn_size": [16, 32, 64],
+                "block_config": [[2, 3], [2, 3, 4]],
+                "keep_prob": [0.8, 1.0],
+                "output_nonlinear": [null, "relu", "tanh", "sigmoid"]
+            },
+            "optimizer_param": {
+
+            }
+        }
+}
+}
+
+```
+
+
+
+### Step by step
+
+There are six steps involved in the utilization of AutoGenome to construct an AI model:
+
+1. Import autogenome
+
+   ```python
+   import autogenome as ag
+   ```
+
+2. Load the configuration file. Contents of configuration file are shown previously.
+
+   ```python
+   automl = ag.auto("/data_autogenome/data_test/json_hub_simple/densenet_test.json")
+   ```
+
+   If the configuration file is successfully loaded, the following log will printed:
+
+   ```javascript
+   ==========================================================
+   ----------Use the config from /data_autogenome/data_test/json_hub_simple/densenet_test.json
+   ----------Initialize data_loader class
+   ----------Initialize Optimizer
+   ----------Initialize hyper_param_spec class 
+   ----------Initialize param_spec class 
+   ==========================================================
+   #################################################################################
+   #                                                                               #
+   #                                                                               #
+            Ready to search the best hyper parameters for DenseNet model            
+   #                                                                               #
+   #                                                                               #
+   #################################################################################
+   ```
+
+   
+
+3. Train the model. Model training is performed according to the parameters in the configuration file. Data set is divided into training set : validation set in ratio of 8: 2. The training set data is used for training, and the validation set data is used for the evaluation performance of temporary searched model in real-time. High performance models and parameters are saved to the `models` folder in the corresponding folder (trainer.saver:" ./experiments ")
+
+   ```python
+   automl.train()
+   ```
+
+   During training, the model is initialized to the parameters in `param_spec`, and then the parameter search is performed in the hyper-parameter search space` hyper_param_spec`. Each parameter combination will train a certain number of epochs (trainer.pre_train_epoch). After hyper-parameter search, parameters of the final model  is fixed. And then the final model will be trained again, to achieve a higher performance. The parameters of the final model are saved for further load.
+
+   Parts of logs during training are as follows:
+
+   ```javascript
+   ----------In Hyper & Training Search stage
+   ...
+   Pretraining: search parameter is growth_rate, search value is 32
+   LR_RANGE_TEST From begin_lr 0.000010 To end_lr 0.100000, 
+   Graph was finalized.
+   Running local_init_op.
+   Done running local_init_op.
+   Running will end at step: 10
+   step: 0(global step: 0)	sample/sec: 30.537	loss: 0.815	accuracy: 0.500
+   ...
+   [Plateau Metric] step: 227 loss: 0.483 accuracy: 0.969
+   Saving checkpoints for 228 into data_autogenome/data_test/experiments/models/densenet_demo/1217_200522/hyper_lr0.08500150000000001_block_config_23_bn_size_16_output_nonlinear_None_growth_rate_64_keep_prob_0.8/best_model.ckpt.
+   [Plateau Metric] step: 229 loss: 0.906 accuracy: 0.938
+   [Plateau Metric] step: 231 loss: 0.664 accuracy: 0.953
+   [Plateau Metric] step: 233 loss: 1.088 accuracy: 0.922
+   [Plateau Metric] step: 235 loss: 0.214 accuracy: 0.984
+   Saving checkpoints for 236 into data_autogenome/data_test/experiments/models/densenet_demo/1217_200522/hyper_lr0.08500150000000001_block_config_23_bn_size_16_output_nonlinear_None_growth_rate_64_keep_prob_0.8/best_model.ckpt.
+   [Plateau Metric] step: 237 loss: 0.613 accuracy: 0.953
+   [Plateau Metric] step: 239 loss: 0.797 accuracy: 0.938
+   ...
+   ```
+
+   
+
+4. Evaluation. Evaluate the performance of final model on data specified on `data_evaluate`. Classification task model will output the accuracy and the confusion matrix.
+
+   ```python
+   automl.evaluate()
+   ```
+
+   Parts of logs are as follows:
+
+   ```javascript
+   ----------In Evaluation stage
+   Restoring parameters from data_autogenome/data_test/experiments/models/densenet_demo/1217_200522/hyper_lr0.08500150000000001_block_config_23_bn_size_16_output_nonlinear_None_growth_rate_64_keep_prob_0.8/best_model.ckpt-272
+   Running local_init_op.
+   Done running local_init_op.
+   step: 1	batch/sec: 13.002	loss: 0.080	accuracy: 0.990
+   step: 3	batch/sec: 17.464	loss: 0.080	accuracy: 0.990
+   step: 5	batch/sec: 14.547	loss: 0.080	accuracy: 0.990
+   step: 7	batch/sec: 11.867	loss: 0.080	accuracy: 0.990
+   step: 9	batch/sec: 13.184	loss: 0.080	accuracy: 0.990
+   loss: 0.07991278767585755	accuracy: 0.9899998664855957		[10 batches]
+   Confusion matrix plot is 'data_autogenome/data_test/experiments/output_files/densenet_demo/1217_200522/DenseNet_confusion_matrix.pdf'
+   ```
+
+   The  confusion matrix is shown below. Size of the figure will adjust to the number of categories. The x-axis is true label and the y-axis is the predicted label.
+
+   ![](/images/densenet_confusion_matrix.png)
+
+   
+
+5. Prediction. Given input sample data, predict categories based on the final model trained in step 3. The category and softmax value of each sample will be saved in a csv file.
+
+   ```python
+   automl.predict()
+   ```
+
+   Part of logs are as follows:
+
+   ```javascript
+   ----------In Prediction stage 
+   Restoring parameters from data_autogenome/data_test/experiments/models/densenet_demo/1217_200522/hyper_lr0.08500150000000001_block_config_23_bn_size_16_output_nonlinear_None_growth_rate_64_keep_prob_0.8/best_model.ckpt-272
+   Running local_init_op.
+   Done running local_init_op.
+   ...
+   Predicted values file is "data_autogenome/data_test/experiments/output_files/densenet_demo/1217_200522/DenseNet_predicted_result_data_frame.csv"
+   ```
+
+   As shown in the log, the predicted csv file will be produced and saved. The first column of the file is `predicted_result`, and the second column of `softmax_value` is the softmax value of each sample.
+
+6. Explanation. Rank the importance of the features according to the final model trained in step 3 . The file corresponding to the variable name needs to be specified in the `explainer`.
+
+   ```python
+   automl.explain()
+   ```
+
+   Rank the importance of the model variables, and the log is as follows:
+
+   ```javascript
+   ----------Initialize Shap class
+   Restoring parameters from data_autogenome/data_test/experiments/models/densenet_demo/1217_200522/hyper_lr0.08500150000000001_block_config_23_bn_size_16_output_nonlinear_None_growth_rate_64_keep_prob_0.8/best_model.ckpt-272
+   ----------Computing shap_values with 80  examples and 23361 features
+   importance plot is 'data_autogenome/data_test/experiments/output_files/densenet_demo/1217_200522/_dot0_feature_importance_summary.pdf'
+   importance plot is 'data_autogenome/data_test/experiments/output_files/densenet_demo/1217_200522/_dot1_feature_importance_summary.pdf'
+   features orders in all classes is saved in 'data_autogenome/data_test/experiments/output_files/densenet_demo/1217_200522/_features_orders.csv'
+   importance plot for every classes is 'data_autogenome/data_test/experiments/output_files/densenet_demo/1217_200522/class_0feature_importance_summary.pdf'
+   importance plot for every classes is 'data_autogenome/data_test/experiments/output_files/densenet_demo/1217_200522/class_1feature_importance_summary.pdf'
+   importance plot is 'data_autogenome/data_test/experiments/output_files/densenet_demo/1217_200522/_barTotal_feature_importance_summary.pdf'
+   shap_values every classes is 'data_autogenome/data_test/experiments/output_files/densenet_demo/1217_200522/_class_0shap_values.csv'
+   shap_values every classes is 'data_autogenome/data_test/experiments/output_files/densenet_demo/1217_200522/_class_1shap_values.csv'
+   ```
+
+   Variable importance bar charts and dot charts and total variable importance charts for each category are produced, as shown below:
+
+   Importance map for all variable：
+
+   ![](/images/densenet_total_feature_importance_summary.png)
+
+   Features importance bar plot for class1:
+
+   ![](/images/densenet_class1_feature_importance_summary_bar.png)
+
+   Features importance bar plot for class0:
+
+   ![](/images/densenet_class0_feature_importance_summary_bar.png)
+
+   Features importance dot plot for class1:
+
+   ![](/images/densenet_class1_feature_importance_summary_dot.png)
+
+   Features importance dot plot for class0:
+
+   ![](/images/densenet_class0_feature_importance_summary_dot.png)
+
+
+## Example of RRFCN
+
+RRFCN case uses a binary classification task as an example. The `features` data` little_exp.tsv` contains 100 samples and 23361 features. It may taks around ~5 minutes to finish this case.
+
+```bash
+> wc little_exp.tsv | awk '{print $1}'  # rows
+100
+> sed -n '1,1p' little_exp.tsv | awk '{print NF}'  # columns
+23361
+```
+
+`target` data are of two types, 70 and 30 respectively.
+
+```bash
+> grep -c 0 little_learning_target.tsv
+70
+> grep -c 1 little_learning_target.tsv
+30
+```
+
+
+
+First, prepare the configuration file, as shown below:
+
+### config.json  in use
+
+```javascript
+{
+    "name": "enas_demo",     // Project name
+
+    "model": {
+        "type": "enas",
+        "args": {
+            "output_classes": 2}   // Number of classes
+    },
+
+    "data_train": {
+        "type": "DataLoader",
+        "args":{
+            "data_dir": "/data_autogenome/data_test",  //The folder where the data is located, it is recommended to use an absolute path
+            "features_file": "little_exp.tsv",       //File of features
+            "labels_file": "little_learning_target.tsv",   //tFile of target
+            "validation_split": 0.2,   //Validation set ratio
+            "shuffle": true,   //Whether to shuffle the data during training
+            "delimiter": " "   //Delimiter in data, default: '\t'
+        }
+    },
+
+    "data_evaluate": {
+        "type": "DataLoader",
+        "args": {
+            "data_dir": "./data_autogenome/data_test",
+            "features_file": "little_exp.tsv",    //File for evaluation
+            "labels_file": "little_learning_target.tsv",   //target for evaluation
+            "delimiter": " "
+        }
+    },
+
+    "data_predict": {
+        "type": "DataLoader",
+        "args": {
+            "data_dir": "./data_autogenome/data_test",
+            "features_file": "little_exp.tsv",    ///File for prediction
+            "delimiter": " "
+        }
+    },
+
+    "input_fn": {
+        "num_threads": 16   //Number of threads for reading data
+    },
+
+    "trainer": {
+        "child_num_layers": 3,     //  The size of layers of child model.And size of the first layer will be fixed in enas,the maximum search space of the subsequent layers is the size of the first layer, that is, max_search_channel.
+        "batch_size": 64,     
+        "max_number_of_epoches_in_search": 10,  //The number of epochs to search in Hyperparameter search phase
+        "max_number_of_epoches_in_fixed": 50,   //The number of epochs to search in train phase
+        "top_k_candidates": 2,   //How many candidate networks to train after the search is finished,> = 2
+        "child_l2_reg": 1e-4,   //For Regularization in l2 loss
+        "max_search_channel": 512,    //The size of the first layer of the network, which is also the upper limit of the network search space
+        "save_dir": "/experiments/"  //Name of the folder where logs, model parameters, and results are saved
+    },
+
+    "evaluator": {
+        "max_number_of_steps": 10,
+        "batch_size":100
+    },
+
+    "predictor": {
+        "max_number_of_steps": 10,
+        "batch_size":100
+    },
+
+    "explainer": {
+        "args": {
+            "plot_type": "bar",
+            "features_name_file": "/data_autogenome/data_test/names_2.txt",  //File of feature name ，one column，rows are equall to the number of features
+            "num_samples": 80,
+            "ranked_outputs": 20
+        }
+    }
+}
+
+```
+
+
+
+### Step by step
+
+The utilization of AutoGenome mainly includes the following steps:
+
+1. import autogenome
+
+   ```python
+   import autogenome as ag
+   ```
+
+2. Load the configuration file, as shown above
+
+   ```python
+   automl = ag.auto("/data_autogenome/data_test/json_hub_simple/enas_test.json")
+   ```
+
+   After the configuration file is successfully read, the following log will be printed:
+
+   ```javascript
+   ==========================================================
+   ----------Use the config from ./data_autogenome/data_test/json_hub_simple/enas_test.json
+   ----------Initialize enas class
+   ----------Initialize data_loader class
+   ==========================================================
+   #################################################################################
+   #                                                                               #
+   #                                                                               #
+            Ready to search the best neural arch for enas model            
+   #                                                                               #
+   #                                                                               #
+   #################################################################################
+   ```
+   
+   
+
+3. Train the model. Model training is performed according to the parameters in the configuration file. Data set is divided into training set : validation set in ratio of 8: 2. The training set data is used for training, and the validation set data is used for the evaluation performance of temporary searched model in real-time. High performance models and parameters are saved to the `models` folder in the corresponding folder (trainer.saver:" ./experiments ")
+
+   ```python
+   automl.train()
+   ```
+
+   ENAS first performs a network structure search, searching for `trainer.max_number_of_epoches_in_search` number of epoches. After this process, selects the best` trainer.top_k_candidates` network structure, and separately trains `trainer.max_number_of_epoches_in_fixed` number of epoches.
+
+   Part of the logs during the training process are as follows:
+
+   ```javascript
+   ----------In Hyper & Training Search stage
+   ...
+   Running will end at step: 20
+   step: 0(global step: 0)	sample/sec: 21.559	acc: 0.641	epoch: 0.000	l2 loss: 1.127	ch_step: 0.000	child loss: 1.779
+   ('[3 0 1 2 1 1]', 0.265625)
+   ('[0 4 1 2 0 1]', 0.375)
+   ('[4 4 1 4 1 1]', 0.25)
+   ('[4 0 1 0 1 1]', 0.28125)
+   ...
+   ('[0 2 0 3 0 0]', 0.328125)
+   ('[1 0 0 3 0 1]', 0.265625)
+   ('[0 3 0 2 0 0]', 0.296875)
+   ('[3 1 0 2 0 1]', 0.28125)
+   step: 10(global step: 10)	sample/sec: 801.774	acc: 0.938	epoch: 5.000	l2 loss: 1.142	ch_step: 0.000	child loss: 1.275
+   ...
+   enas train time : 0.30       minutes.
+   
+   training [2 4 0 0 0 0]
+   Saving checkpoints for 0 into experiments/enas/models/enas_demo/1225_103754/1/model.ckpt.
+   
+   Running will end at step: 100
+   step: 0(global step: 0)	sample/sec: 45.455	train_acc: 0.641	child l2 loss:: 0.230	child loss:: 0.784
+   {'valid_acc': 0.734375}, 0
+   old: 0, new: 0.734375
+   [VALIDATION METRICS] step: 1 valid_acc: 0.734
+   Saving checkpoints for 2 into experiments/enas/models/enas_demo/1225_103754/1_1/best_model.ckpt.
+   {'valid_acc': 0.625}, 0.734375
+   [VALIDATION METRICS] step: 3 valid_acc: 0.625
+   ...
+   training [1 4 0 1 1 0]
+   ...
+   training arc: [1 4 0 1 1 0], valid_acc: 1.0
+   Best arc:[1 4 0 1 1 0], eval_acc:1.0, max_k:2
+   ```
+
+   The log will print the candidate network structure, the best accuracy achieved during training and the corresponding network structure.
+
+4. Evaluation. Evaluate the performance of final model on data specified on `data_evaluate`. Classification task model will output the accuracy and the confusion matrix.
+
+   ```python
+   automl.evaluate()
+   ```
+
+   Part of logs are as follows:
+
+   ```javascript
+   ----------In Evaluation stage
+   Restoring parameters from experiments/enas/models/enas_demo/1225_103754/2_1/best_model.ckpt-54
+   Running local_init_op.
+   Done running local_init_op.
+   step: 1	batch/sec: 57.737	valid_acc: 1.000
+   step: 3	batch/sec: 53.513	valid_acc: 1.000
+   step: 5	batch/sec: 63.091	valid_acc: 1.000
+   step: 7	batch/sec: 57.627	valid_acc: 1.000
+   step: 9	batch/sec: 63.674	valid_acc: 1.000
+   valid_acc: 1.0		[10 batches]
+   Confusion matrix plot is 'experiments/enas/output_files/enas_demo/1225_103754/enas_confusion_matrix.pdf'
+   ```
+
+   The confusion matrix is shown below. Size of the figure will ajust to the number of categories. The x-axis are true labels and the y-axis are the predicted labels.
+
+   <img src="../images/enas_confusion_matrix.png" style="zoom:75%;" />
+
+   
+
+5. Prediction. Given input sample data, predict categories based on the final model trained in step 3. The category and softmax value of each sample will be saved in a csv file.
+
+   ```python
+   automl.predict()
+   ```
+
+   Some logs are as follows:
+
+   ```javascript
+   ----------In Prediction stage 
+   Restoring parameters from experiments/enas/models/enas_demo/1225_103754/2_1/best_model.ckpt-54
+   Running local_init_op.
+   Done running local_init_op.
+   step: 9	batch/sec: 63.824
+   	[10 batches]
+   Predicted values file is "experiments/enas/output_files/enas_demo/1225_103754/enas_predicted_result_data_frame.csv"
+   ```
+
+   As shown in the log, the predicted csv file will be produced and saved. The first column of the file is `predicted_result`, and the second column of `softmax_value` is the softmax value of each sample.
+
+6. Explanation. Rank the importance of the features according to the final model trained in step 3 . The file corresponding to the variable name needs to be specified in the `explainer`.
+
+   ```python
+   automl.explain()
+   ```
+
+   Rank the importance of the model variables, and the log is as follows:
+
+   ```javascript
+   ----------Initialize Shap class
+   Restoring parameters from experiments/enas/models/enas_demo/1225_103754/2_1/best_model.ckpt-54
+   ----------Computing shap_values with 80  examples and 23361 features
+   importance plot is 'experiments/enas/output_files/enas_demo/1225_103754/_dot0_feature_importance_summary.pdf'
+   importance plot is 'experiments/enas/output_files/enas_demo/1225_103754/_dot1_feature_importance_summary.pdf'
+   features orders in all classes is saved in 'experiments/enas/output_files/enas_demo/1225_103754/_features_orders.csv'
+   importance plot for every classes is 'experiments/enas/output_files/enas_demo/1225_103754/class_1feature_importance_summary.pdf'
+   importance plot for every classes is 'experiments/enas/output_files/enas_demo/1225_103754/class_0feature_importance_summary.pdf'
+   importance plot is 'experiments/enas/output_files/enas_demo/1225_103754/_barTotal_feature_importance_summary.pdf'
+   shap_values every classes is 'experiments/enas/output_files/enas_demo/1225_103754/_class_0shap_values.csv'
+   shap_values every classes is 'experiments/enas/output_files/enas_demo/1225_103754/_class_1shap_values.csv'
+   ```
+
+   Variable importance bar charts and dot charts and total variable importance charts for each sample are produced, as shown below:
+
+   Importance map for all variable：
+
+   ![](../images/enas_total_feature_importance_summary.png)
+
+   Features importance bar plot for class1:
+
+   ![](../images/enas_class1_feature_importance_summary_bar.png)
+
+   Features importance bar plot for class0:
+
+   ![](../images/enas_class0_feature_importance_summary_bar.png)
+
+   Features importance dot plot for class1:
+
+   ![](../images/enas_class1_feature_importance_summary_dot.png)
+
+   Features importance dot plot for class0:
+
+   ![](../images/enas_class0_feature_importance_summary_dot.png)
+
+
+
+
+## Example of  Res-VAE
+
+Res-VAE case takes a binary classification task as an example. The `features` data` little_exp.tsv` contains 100 samples and 23361 features. The purpose of the case is to performe dimensionality reduction, and obtain the latent vector for further cluster analysis.
+![](../images/vae.png)
+
+```bash
+> wc little_exp.tsv | awk '{print $1}'  # rows
+100
+> sed -n '1,1p' little_exp.tsv | awk '{print NF}'  # columns
+23361
+```
+
+
+
+First, prepare the configuration file, as shown below:：
+
+### config.json  in use
+
+```javascript
+{
+    "name": "res_vae_demo",   // Project name
+
+    "model": {
+        "type": "VAE"
+    },
+
+    "data_train": {
+        "type": "DataLoader",
+        "args":{
+            "data_dir": "/data_autogenome/data_test",  //The folder where the data is located, it is recommended to use an absolute path
+            "features_file": "little_exp.tsv",  //File of features
+            "validation_split": 0.2,   //Validation set ratio
+            "shuffle": true,   //Whether to shuffle the data during training
+            "delimiter": " "    //Delimiter in data, default: '\t' 
+        }
+    },
+
+    "data_predict": {
+        "type": "DataLoader",
+        "args": {
+            "data_dir": "/data_autogenome/data_test",
+            "features_file": "little_exp.tsv",    //File for evaluation
+            "delimiter": " "
+        }
+    },
+
+    "input_fn": {
+        "num_threads": 16    //Number of threads for reading data
+    },
+
+    "trainer": {
+        "hyper_selector": true,
+        "batch_size": 64,
+        "save_dir": "./experiments/",
+        "monitor": "loss",
+        "selected_mode": "min",
+        "num_gpus": 1,
+        "select_by_eval":false,
+        "patience": 30,
+        "pre_train_epoch": 10,  //The number of epochs trained in each group of parameters in Hyperparameter search phase
+        "max_steps": 64000  //Maximum running steps to train. When the patience is large, the max_steps steps will be trained. Max_steps * batch_size / num_samples is the number of epochs corresponding to the training.
+    },
+
+    "optimizer": {
+        "type": "adam"
+    },
+
+    "predictor": {
+        "log_every_n_steps": 10,
+        "output_every_n_steps": 1,
+        "max_number_of_steps": 20,
+        "batch_size": 64
+    },
+
+    "param_spec": {   //Initial parameters
+        "type": "origin_params",
+        "args": {
+            "VAE": {
+                "keep_prob": 1.0,
+                "start_size": 1024,
+                "decay_ratio_list": [0.8, 0.6, 0.6]
+            },
+            "optimizer_param": {
+                "learning_rate": 0.01
+            }
+        }
+    },
+
+    "hyper_param_spec": {   //Hyperparameter search space
+        "type": "hyper_params",
+        "args": {
+            "VAE": {
+                "keep_prob": [0.6, 0.8, 1.0],
+                "start_size": [1024, 512, 256],
+                "num_layers": [5, 4, 3],
+                "decay_ratio": [0.6, 0.8]
+            },
+            "optimizer_param": {
+
+            }
+        }
+}
+}
+
+```
+
+
+
+### Step by step
+
+There are six steps involved in the utilization of AutoGenome to construct an AI model:
+
+1. import autogenome
+
+   ```python
+   import autogenome as ag
+   ```
+
+2. Load the configuration file, as shown above
+
+   ```python
+   automl = ag.auto("/data_autogenome/data_test/json_hub_simple/densenet_test.json")
+   ```
+
+   After the configuration file is successfully read, the following log is printed:
+
+   ```javascript
+   ==========================================================
+   ----------Use the config from /data_autogenome/data_test/json_hub_simple/resvae_test.json
+   ----------Initialize data_loader class
+   ----------Initialize Optimizer
+   ----------Initialize hyper_param_spec class 
+   ----------Initialize param_spec class 
+   ==========================================================
+   #################################################################################
+   #                                                                               #
+   #                                                                               #
+            Ready to search the best hyper parameters for VAE model            
+   #                                                                               #
+   #                                                                               #
+   #################################################################################
+   ```
+
+   
+
+3. Train the model. Model training is performed according to the parameters in the configuration file. Data set is divided into training set : validation set in ratio of 8: 2. The training set data is used for training, and the validation set data is used for the evaluation performance of temporary searched model in real-time. High performance models and parameters are saved to the `models` folder in the corresponding folder (trainer.saver:" ./experiments ")
+
+   ```python
+   automl.train()
+   ```
+
+   During training, the model is initialized to the parameters in `param_spec`, and then the parameter search is performed in the hyper-parameter search space` hyper_param_spec`. Each parameter combination will train a certain number of epochs (trainer.pre_train_epoch). After hyper-parameter search, parameters of the final model  is fixed. And then the final model will be trained again, to achieve a higher performance. The parameters of the final model are saved for further load.
+
+   Parts of logs during training are as follows:
+
+   ```javascript
+   ----------In Hyper & Training Search stage
+   ...
+   Pretraining: search parameter is decay_ratio_list, search value is (0.6, 0.6, 0.6, 0.6)
+   LR_RANGE_TEST From begin_lr 0.000010 To end_lr 0.100000, 
+   Graph was finalized.
+   Running local_init_op.
+   Done running local_init_op.
+   From /opt/conda/envs/py2/lib/python2.7/site-packages/tensorflow/python/training/monitored_session.py:804: start_queue_runners (from tensorflow.python.training.queue_runner_impl) is deprecated and will be removed in a future version.
+   Instructions for updating:
+   To construct input pipelines, use the `tf.data` module.
+   Running will end at step: 200
+   step: 0(global step: 0)	sample/sec: 1.066	loss: 6.500	reconstruct_loss: 6.491	KLD_loss: 0.009
+   step: 10(global step: 10)	sample/sec: 4.948	loss: 4.740	reconstruct_loss: 4.730	KLD_loss: 0.009
+   step: 20(global step: 20)	sample/sec: 4.905	loss: 4.479	reconstruct_loss: 4.469	KLD_loss: 0.010
+   step: 30(global step: 30)	sample/sec: 4.958	loss: 4.194	reconstruct_loss: 4.184	KLD_loss: 0.010
+   step: 40(global step: 40)	sample/sec: 4.937	loss: 5.517	reconstruct_loss: 5.507	KLD_loss: 0.010
+   step: 50(global step: 50)	sample/sec: 4.972	loss: 5.426	reconstruct_loss: 5.417	KLD_loss: 0.010
+   step: 60(global step: 60)	sample/sec: 5.000	loss: 5.974	reconstruct_loss: 5.964	KLD_loss: 0.010
+   step: 70(global step: 70)	sample/sec: 4.952	loss: 5.954	reconstruct_loss: 5.944	KLD_loss: 0.010
+   step: 80(global step: 80)	sample/sec: 4.978	loss: 5.019	reconstruct_loss: 5.009	KLD_loss: 0.010
+   step: 90(global step: 90)	sample/sec: 4.970	loss: 7.211	reconstruct_loss: 7.201	KLD_loss: 0.010
+   step: 100(global step: 100)	sample/sec: 4.895	loss: 6.998	reconstruct_loss: 6.988	KLD_loss: 0.010
+   step: 110(global step: 110)	sample/sec: 4.945	loss: 6.677	reconstruct_loss: 6.666	KLD_loss: 0.011
+   step: 120(global step: 120)	sample/sec: 4.986	loss: 6.008	reconstruct_loss: 5.997	KLD_loss: 0.011
+   step: 130(global step: 130)	sample/sec: 4.887	loss: 6.592	reconstruct_loss: 6.582	KLD_loss: 0.011
+   step: 140(global step: 140)	sample/sec: 4.960	loss: 7.500	reconstruct_loss: 7.489	KLD_loss: 0.011
+   step: 150(global step: 150)	sample/sec: 4.953	loss: 7.281	reconstruct_loss: 7.271	KLD_loss: 0.011
+   step: 160(global step: 160)	sample/sec: 4.930	loss: 6.914	reconstruct_loss: 6.904	KLD_loss: 0.011
+   step: 170(global step: 170)	sample/sec: 4.935	loss: 7.423	reconstruct_loss: 7.412	KLD_loss: 0.011
+   step: 180(global step: 180)	sample/sec: 4.948	loss: 7.145	reconstruct_loss: 7.134	KLD_loss: 0.011
+   step: 190(global step: 190)	sample/sec: 4.943	loss: 6.629	reconstruct_loss: 6.619	KLD_loss: 0.011
+   ...
+   The model and events are saved in data_autogenome/data_test/experiments/models/res_vae_demo/1105_013120/hyper_lr0.017883212500000002_decay_ratio_list_(0.60.60.6)_start_size_256_keep_prob_1.0
+   Graph was finalized.
+   Running local_init_op.
+   Done running local_init_op.
+   Running will end at step: 64000
+   step: 0(global step: 0)	sample/sec: 2.123	loss: 6.988	reconstruct_loss: 6.987	KLD_loss: 0.001
+   step: 5(global step: 5)	sample/sec: 10.490	loss: 6.911	reconstruct_loss: 6.910	KLD_loss: 0.001
+   step: 10(global step: 10)	sample/sec: 36.250	loss: 6.771	reconstruct_loss: 6.770	KLD_loss: 0.001
+   step: 15(global step: 15)	sample/sec: 20.972	loss: 4.897	reconstruct_loss: 4.896	KLD_loss: 0.001
+   step: 20(global step: 20)	sample/sec: 28.025	loss: 3.996	reconstruct_loss: 3.995	KLD_loss: 0.001
+   step: 25(global step: 25)	sample/sec: 77.930	loss: 2.605	reconstruct_loss: 2.604	KLD_loss: 0.001
+   step: 30(global step: 30)	sample/sec: 77.654	loss: 2.056	reconstruct_loss: 2.056	KLD_loss: 0.000
+   step: 35(global step: 35)	sample/sec: 77.751	loss: 1.682	reconstruct_loss: 1.681	KLD_loss: 0.001
+   [Plateau Metric] step: 39 loss: 1700371756103124513701494784.000 reconstruct_loss: 1696594689330963519620775936.000 KLD_loss: 3777113350190000207036416.000
+   Saving checkpoints for 40 into data_autogenome/data_test/experiments/models/res_vae_demo/1105_013120/hyper_lr0.017883212500000002_decay_ratio_list_(0.60.60.6)_start_size_256_keep_prob_1.0/best_model.ckpt.
+   ...
+   ```
+
+
+4. Evaluation. Evaluate the performance of final model on data specified on `data_evaluate`. Classification task model will output the accuracy and the confusion matrix.
+
+   ```python
+   automl.predict()
+   ```
+
+   Parts of logs are as follows:
+
+   ```javascript
+   ----------In Prediction stage 
+   Restoring parameters from data_autogenome/data_test/experiments/models/res_vae_demo/1105_013120/hyper_lr0.017883212500000002_decay_ratio_list_(0.60.60.6)_start_size_256_keep_prob_1.0/best_model.ckpt-1040
+   Running local_init_op.
+   Done running local_init_op.
+   step: 9	batch/sec: 69.090
+   step: 19	batch/sec: 69.454
+   	[20 batches]
+   latent_vector and reconstruction x  values file is: "data_autogenome/data_test/experiments/output_files/res_vae_demo/1105_013120/res_vae_predicted_latent_vector_data_frame.csv" and "data_autogenome/data_test/experiments/output_files/res_vae_demo/1105_013120/res_vae_predicted_recon_x_data_frame.csv"
+   ```
+
+   The obtained latent vector data can be subjected to further clustering analysis and compared with other methods, as shown below:
+
+   ![](../images/vae_vs.PNG)
+
+
+
+## Appendix
+
+Paper of AutoGenome：[AutoGenome: An AutoML Tool for Genomic Research](https://www.biorxiv.org/content/10.1101/842526v1)
+
+
+
+
+
+
+
+
+
+
+
+

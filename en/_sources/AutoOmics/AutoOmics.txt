@@ -1,0 +1,33 @@
+# AutoOmics
+## AutoOmics-Introduction
+
+AutoOmics is a novel multi-omics integration approach. It can efficiently integrate information from different omics data. AutoOmics provides a convenient framework to help researchers to build the best multi-model deep neural networks for their researches. 
+
+### Background
+
+With the development of sequencing technologies, researchers have extended the large scale whole genome profiling experiments from genomics to epigenetics, proteomics and metabolics. To obtain whole omics profiling data from a single sample or individual is more and more popular in biomedical researches. It helps researchers to extract evidences from different molecular system levels, to explore and understand the underlying biological mechanisms. For example, in cancer research, researchers need to confirm evidences from cancer cell gene expression, gene mutations, gene copy number variations and gene methylations to form a proper hypothesis, tools like oncoplot is developed to help visualize and analyze the multi-omics data.
+
+Deep learning is very promising in solving problems in omics research, such as genomics, epigenomics, proteomics, and metabolics. The design of neural network architecture is very important in modeling omics data against different scientific problems. Residual fully-connected neural network (RFCN) was proposed to provide better neural network architectures for modeling omics data. The next challenge for omics research is how to integrate information from different omics data using deep learning, so that information from different molecular system levels could be combined to predict the target. 
+
+The simplest way to integrate multi-omics data is to concatenate all the omics data as the input to the DNN. For example, DeepSynergy concatenates fingerprints of molecular structures of chemicals and omics data of cancer cell lines directly as input for the Multi-layer perception (MLP) neuron network. The problem is that the data distribution of different omics data vary a lot, some omics data even have different data types, which makes the DNN difficult to fit a good model.
+
+The proposal of residual fully-connected neural network (RFCN) implemented in AutoGenome have shown us a good framework to model the single-omics data, we want to go further to extend it to multi-omics research, by considering a. the advantage of RFCN neural network architectures; b. the AutoML features from AutoGenome; c. novel multi-model approaches to integrate different multi-omics data. AutoOmics is developed for this purpose, users specify the location of the input omics data and the learning targets, AutoML is then used to train the DNN model automatically, after an optimal model is trained, model interpretation module will be used to explain the influence of each gene to the learning targets. AutoOmics supports both regression and classification tasks, it doesn't require the users to master tensorflow or pytorch to start with.
+
+### Method
+
+- Collecting multi-omics data. Take multi-omics data of 4 data types as example, a gene expression matrix, a gene mutation matrix, a copy number variation (CNV) matrix and a DNA methylation matrix.
+
+  
+
+- Use each single-type omics data respectively as input to train a model for the learning targets. Four network structure classes (MLP, ResNet, DenseNet and ENAS), numbers of layers, numbers of neurons per layer and hyperparameter combinations (batch size, learning rate and optimizers) was performed to search for a model with the highest performance evaluation scores as optimal single-omics models for this single-type omics data. Then, weights of the all optimal models were fixed, and stopped updating in the following steps.
+
+  
+
+- Concatenate latent layers from all the optimal single-omics models. Here we chose all the last latent layers and extract the corresponding vector values into a concatenated vector as the input for Step 4.
+
+  
+
+- Use the concatenated vector as input to train a model for the learning targets again. Same to the process in Step 2, search for optimal multi-omics model. Then, weights of this optimal model was fixed. All the optimal single-omics (from Step 2) and multi-omics (from Step 4) models were combined together into a whole network, as the final AutoOmics-based AI model.
+
+## Appendix
+Paper of AutoOmics：[AutoOmics: New Multimodal Approach for Multi-Omics Research AutoOmics](https://doi.org/10.1016/j.ailsci.2021.100012)

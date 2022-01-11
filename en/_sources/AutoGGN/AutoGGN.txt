@@ -1,0 +1,456 @@
+# AutoGGN
+## AutoGGN Introduction
+
+AutoGGN is a multimodal method to integrate multi-omics data with molecular interaction networks based on graph convolutional neural networks (GCNs).
+
+### Background
+Omics data can be used to identify biological characteristics from genetic to phenotypic levels during the life span of a living being, while molecular interaction networks have a fundamental impact on life activities. Integrating omics data and molecular interaction networks will help researchers delve into comprehensive information hidden in the data. 
+
+## Quick-start
+
+### Install
+
+```shell
+# Setup environment using conda, env_gpu.yaml for CPU server
+conda env create -f env.yaml
+conda activate autogdl
+
+#get test data and install autogdl package
+wget https://github.com/EiHealth/EiHealth.github.io/blob/master/data/little_exp.tsv --no-check-certificate
+wget https://github.com/EiHealth/EiHealth.github.io/blob/master/data/little_learning_target.tsv --no-check-certificate
+pip install autogdl*.whl
+```
+
+### Step by step running
+```python
+import autogdl as ag
+
+# create automl instance from a default config file
+automl= ag.auto()
+
+# or from a user-defined config file
+automl= ag.auto("config.yaml")
+
+# train to get the best hyperparameters and a trained model
+automl.train()
+
+# evaluate 
+automl.evaluate()
+
+# predict
+automl.predict()
+
+# interprete
+automl.explain()
+```
+
+## Introduction of config.yaml
+
+```javascript
+project_name: exp1        // Project name
+search_algorithm:
+  random_search:        // Algorithm for learning_rate, weight_decay searching
+    params:
+      - type: discrete_param        // [discrete_param/continuous_param]
+        name: learning_rate        // Name of parameter to search
+        values: [0.001, 0.002, 0.003, 0.004, 0.005]        // values of parameter to search
+      - type: discrete_param
+        name: weight_decay
+        values: [1e-5, 1e-4, 1e-3]
+  mbnas:        // Algorithm for activation, num_layers, embedding_dim, channels searching
+    params:
+      - type: discrete_param
+        name: activation
+        values: ['sigmoid', 'relu']
+      - type: discrete_param
+        name: num_layers
+        values: [2, 3]
+      - type: discrete_param
+        name: embedding_dim
+        values: [8, 16]
+      - type: discrete_param
+        name: channels
+        values: [4, 8, 16]
+
+data:
+  data_url: /home/wenshen/auto_gdl/sample_data/small/        // Dataset path
+  sample_file: feature        // Features file name for training
+  label_file: label        // Labels file name for training
+  adjlist: adjlist        // Adjlist file name for training
+  test_sample_file: test_x.csv        // Features file name for evaluating
+  test_label_file: test_y.csv        // Labels file name for evaluating
+  predict_sample_file: test_x.csv        // Features file name for predicting
+
+trainer:
+  train_url: /home/wenshen/try_res        // Dir to save models, logs and output files
+  graph_format: adjlist        // [adjlist/pickle]
+  save_result: True        // Whether to save results or not
+  num_epochs: 10        // Epochs for hyperparams tunning
+  seed: 0        // random seed for train/validation split
+  aggregation: None        [None/hierarchy/random/kmeans] Aggregation clusting method, used to reduce the number of nodes after each convolution
+  agg_reduce: 2        // Aggregation reduce factor
+  gating: False        // Whether to add gate layer or not
+  dropout: True        // Whether to add Dropout or not
+  metrics: acc        // [acc/f1] Evaluation metrics 
+  split_spec: 0.8        // Split size of train and validation
+  label_dim: 1        // Label dimension
+  batch_size: 50        // Batch size
+  num_classes: 10        // Number of classes in dataset
+  log_every_n_epochs: 1        // Print logs every n epochs
+  num_workers: 4        // Number of graph cpnvolution workers
+
+explainer:
+  plot_type: bar      // Plot type for feature importance graph
+  features_name_file: /home/wenshen/auto_gdl/sample_data/small/gene_names        // Path of features name file
+  num_samples: 80        // Number of samples used to calculate shap value
+  ranked_outputs: 20        // Number of top features to include in the plot
+
+
+```
+
+## Example of Gene_GCN
+
+Gene GCN case uses a ten-class classification task as an example. The `features` data `feature` contains 9,000 sample and 5129 features.
+
+```bash
+> wc feature | awk '{print $1}'  # rows
+9000
+> sed -n '1,1p' feature | awk -F',' '{print NF-1}'  # columns
+5129
+```
+
+The `label` data consist of ten classes, each class contains 900 samples respectively.
+```bash
+> awk -F',' '{print $2}' label | sort | uniq -c | awk '{print $2 " " $1}' # number of samples for each class
+0 900
+1 900
+2 900
+3 900
+4 900
+5 900
+6 900
+7 900
+8 900
+9 900
+```
+
+The `adjlist` is an adjacency list, which describes the set of neighbors of each feature.  There are 5129 lines representing features in `adjlist`. The columns are neighbors of the feature.
+```bash
+> wc adjlist | awk '{print $1}'   # rows
+5129
+```
+
+
+First, prepare the configuration file, as shown below:
+
+### config.yaml  in use
+
+首先，准备配置文件，具体如下所示：
+```javascript
+project_name: SC980        // Project name
+search_algorithm:
+  random_search:        // Algorithm for learning_rate, weight_decay searching
+    params:
+      - type: discrete_param        // [discrete_param/continuous_param]
+        name: learning_rate        // Name of parameter to search
+        values: [0.001, 0.002, 0.003, 0.004, 0.005]        // values of parameter to search
+      - type: discrete_param
+        name: weight_decay
+        values: [1e-5, 1e-4, 1e-3]
+  mbnas:        // Algorithm for activation, num_layers, embedding_dim, channels searching
+    params:
+      - type: discrete_param
+        name: activation
+        values: ['sigmoid', 'relu']
+      - type: discrete_param
+        name: num_layers
+        values: [2, 3]
+      - type: discrete_param
+        name: embedding_dim
+        values: [8, 16]
+      - type: discrete_param
+        name: channels
+        values: [4, 8, 16]
+
+data:
+  data_url: /home/wenshen/auto_gdl/sample_data/small/        // Dataset path
+  sample_file: feature        // Features file name for training
+  label_file: label        // Labels file name for training
+  adjlist: adjlist        // Adjlist file name for training
+  test_sample_file: test_x.csv        // Features file name for evaluating
+  test_label_file: test_y.csv        // Labels file name for evaluating
+  predict_sample_file: test_x.csv        // Features file name for predicting
+
+trainer:
+  train_url: /home/wenshen/try_res        // Dir to save models, logs and output files
+  graph_format: adjlist        // [adjlist/pickle]
+  save_result: True        // Whether to save results or not
+  num_epochs: 10        // Epochs for hyperparams tunning
+  seed: 0        // random seed for train/validation split
+  aggregation: None        [None/hierarchy/random/kmeans] Aggregation clusting method, used to reduce the number of nodes after each convolution
+  agg_reduce: 2        // Aggregation reduce factor
+  gating: False        // Whether to add gate layer or not
+  dropout: True        // Whether to add Dropout or not
+  metrics: acc        // [acc/f1] Evaluation metrics 
+  split_spec: 0.8        // Split size of train and validation
+  label_dim: 1        // Label dimension
+  batch_size: 50        // Batch size
+  num_classes: 10        // Number of classes in dataset
+  log_every_n_epochs: 1        // Print logs every n epochs
+  num_workers: 4        // Number of graph cpnvolution workers
+
+explainer:
+  plot_type: bar      // Plot type for feature importance graph
+  features_name_file: /home/wenshen/auto_gdl/sample_data/small/gene_names        // Path of features name file
+  num_samples: 80        // Number of samples used to calculate shap value
+  ranked_outputs: 20        // Number of top features to include in the plot
+
+
+```
+
+### Step by step
+
+The use of AutoGenome-BioGDL mainly includes the following steps:
+
+1. import autogdl
+
+   ```python
+   import autogdl as ag
+   ```
+
+2. Load the configuration file, as shown above.
+
+   ```python
+   automl = ag.auto("")
+   ```
+
+   After the configuration file is successfully loaded, the following log will be printed:
+   ```javascript
+   ==========================================================
+   ----------Use the config from /
+   ----------Split parameters for autosearch and GDL
+   ----------Split yamls for autosearch
+    
+   ```
+
+3. Train the model. Model training is performed according to the parameters in the configuration file. Dataset will be split into training set : validation set in the ratio of 8 : 2. Models and the corresponding parameters of good performance will be recorded and saved to the `model` folder. 
+
+   ```python
+   automl.train()
+   ```
+
+   During training process, random search and mbnas algorithms are used to search for the best combination of hyper-parameters (learning_rate, weight_decay, activation, num_layers, embedding_dim, channels).
+   
+   Parts of logs during training are as follows:
+   
+   ```javascript
+   ----------In Hyper & Training Search stage
+    platform.python_version(): 3.6.10
+    Results writing to local_dir : /home/wenshen/try_res/autosearch_results/ed6bab98-f0fd-11ea-96eb-1d44314a8df1
+    Log dir is made: /home/wenshen/try_res/autosearch_results/ed6bab98-f0fd-11ea-96eb-1d44314a8df1
+    [     manager.py: 127][ INFO]  copying from /home/wenshen/anaconda3/envs/autogdl-final/lib/python3.6/site-packages/autogdl/utils/ to /home/wenshen/try_res/autosearch_results/code
+    [     manager.py: 129][ INFO]  copy finished
+    [     manager.py: 425][ INFO]  connecting to None
+    INFO resource_spec.py:216 -- Starting Ray with 62.89 GiB memory available for workers and up to 3.88 GiB for objects. You can adjust these settings with ray.init(memory=<bytes>, object_store_memory=<bytes>).
+    [search_space.py:  54][ INFO]  Add DiscreteParam learning_rate: [0.001, 0.002, 0.003, 0.004, 0.005] into SearchSpace
+    [search_space.py:  54][ INFO]  Add DiscreteParam weight_decay: [1e-05, 0.0001, 0.001] into SearchSpace
+    [custom_schedulers.py:  60][ INFO]  Creating RCP with grace_period=5, ratio=0.1, validation_ratio=0.0
+    [custom_schedulers.py:  71][ INFO]  result will be write to /tmp/front_0_1599478401.9962184.csv
+    [     manager.py: 310][ INFO]  waiting for resources GPU (1 / 0)
+    [     manager.py: 310][ INFO]  waiting for resources CPU (8 / 8)
+    [     manager.py: 314][ INFO]  resources is sufficient for one trial
+    [     manager.py: 371][ INFO]  Updated base_config after merging search_space and general config: {'user_code_path': '/home/wenshen/anaconda3/envs/autogdl-final/lib/python3.6/site-packages/autogdl/utils/', 'bootstrap_py': 'genegcn_wrapper.py', 'eval_bootstrap_py': None, 'user_flags': ['--data_url=/home/wenshen/auto_gdl/sample_data/small/', '--sample_file=feature', '--label_file=label', '--adjlist=adjlist', '--test_sample_file=test_x.csv', '--test_label_file=test_y.csv', '--predict_sample_file=test_x.csv', '--graph_format=adjlist', '--save_result=True', '--num_epochs=10', '--seed=0', '--aggregation=None', '--agg_reduce=2', '--gating=False', '--dropout=True', '--metrics=acc', '--split_spec=0.8', '--label_dim=1', '--batch_size=50', '--num_classes=10', '--log_every_n_epochs=1', '--num_workers=4'], 'train_url': '/home/wenshen/try_res/models/SC980/0907_193057', 'search_space': 'random', 'instance_per_trial': 1, 'cpu_per_instance': 8, 'gpu_per_instance': 0, 'npu_per_instance': 0, 'framework': 'pytorch', 'report_keys': None}
+    [search_policy.py: 658][DEBUG]  Adding config to configs: {'learning_rate': 0.005, 'weight_decay': 1e-05}
+    {'learning_rate': 0.005, 'weight_decay': 1e-05}
+    [search_policy.py: 658][DEBUG]  Adding config to configs: {'learning_rate': 0.005, 'weight_decay': 0.0001}
+    {'learning_rate': 0.005, 'weight_decay': 0.0001}
+    [search_policy.py: 658][DEBUG]  Adding config to configs: {'learning_rate': 0.002, 'weight_decay': 0.001}
+    {'learning_rate': 0.002, 'weight_decay': 0.001}
+    [search_policy.py: 658][DEBUG]  Adding config to configs: {'learning_rate': 0.005, 'weight_decay': 0.001}
+    {'learning_rate': 0.005, 'weight_decay': 0.001}
+    [search_policy.py: 658][DEBUG]  Adding config to configs: {'learning_rate': 0.005, 'weight_decay': 0.001}
+    {'learning_rate': 0.005, 'weight_decay': 0.001}
+    [search_policy.py: 243][ INFO]  =========== BEGIN Experiment-Round: 1 [5 NEW | 5 TOTAL] ===========
+    INFO ray_trial_executor.py:121 -- Trial ModelartsFunctionRunner_ef65db26: Setting up new remote runner.
+    == Status ==
+    Memory usage on this node: 18.1/62.9 GiB
+    Using FIFO scheduling algorithm.
+    Resources requested: 8/8 CPUs, 0/1 GPUs, 0.0/62.89 GiB heap, 0.0/2.64 GiB objects
+    Result logdir: /home/wenshen/try_res/autosearch_results/ed6bab98-f0fd-11ea-96eb-1d44314a8df1/ModelartsFunctionRunner
+    Number of trials: 5 (1 RUNNING, 4 PENDING)
+    +----------------------------------+----------+-------+----------------+-----------------+
+    | Trial name                       | status   | loc   | weight_decay   | learning_rate   |
+    |----------------------------------+----------+-------+----------------+-----------------|
+    | ModelartsFunctionRunner_ef65db26 | RUNNING  |       |                |                 |
+    | ModelartsFunctionRunner_ef66ad1c | PENDING  |       |                |                 |
+    | ModelartsFunctionRunner_ef67bc98 | PENDING  |       |                |                 |
+    | ModelartsFunctionRunner_ef68bd78 | PENDING  |       |                |                 |
+    | ModelartsFunctionRunner_ef68df60 | PENDING  |       |                |                 |
+    +----------------------------------+----------+-------+----------------+-----------------+
+    ...
+   ```
+
+
+
+4. Evaluation. Evaluate the performance of the final model on dataset specified in `data.test_sample_file` and `data.test_label_file`, `accuracy`, `classification_report` and `confusion matrix` will be calculated and saved.
+
+   ```python
+   automl.evaluate()
+   ```
+
+   Parts of logs are as follows:
+   
+   ```javascript
+   New DB Info: /home/wenshen/try_res/models/SC980/0907_193057/aefe36c0/aefe36c0_model/adjlist
+   start loading graph /home/wenshen/try_res/models/SC980/0907_193057/aefe36c0/aefe36c0_model/adjlist
+   finish loading.
+   number of nodes = 5129
+   number of edges = 20691
+   time of loading graph = 14.6781 ms
+   Restoring parameters from /home/wenshen/try_res/models/SC980/0907_193057/aefe36c0/aefe36c0_model/variables/variables
+   metrics acc:0.906
+   The detail metrics is:
+    {'0': {'precision': 0.7889908256880734, 'recall': 0.86, 'f1-score': 0.8229665071770336, 'support': 100}, '1': {'precision': 0.8867924528301887, 'recall': 0.94, 'f1-score': 0.912621359223301, 'support': 100}, '2': {'precision': 0.9078947368421053, 'recall': 0.69, 'f1-score': 0.7840909090909091, 'support': 100}, '3': {'precision': 0.9514563106796117, 'recall': 0.98, 'f1-score': 0.9655172413793104, 'support': 100}, '4': {'precision': 0.9423076923076923, 'recall': 0.98, 'f1-score': 0.9607843137254902, 'support': 100}, '5': {'precision': 0.967391304347826, 'recall': 0.89, 'f1-score': 0.9270833333333334, 'support': 100}, '6': {'precision': 0.8347826086956521, 'recall': 0.96, 'f1-score': 0.8930232558139534, 'support': 100}, '7': {'precision': 0.8640776699029126, 'recall': 0.89, 'f1-score': 0.8768472906403941, 'support': 100}, '8': {'precision': 0.9456521739130435, 'recall': 0.87, 'f1-score': 0.90625, 'support': 100}, '9': {'precision': 1.0, 'recall': 1.0, 'f1-score': 1.0, 'support': 100}, 'accuracy': 0.906, 'macro avg': {'precision': 0.9089345775207105, 'recall': 0.9059999999999999, 'f1-score': 0.9049184210383725, 'support': 1000}, 'weighted avg': {'precision': 0.9089345775207106, 'recall': 0.906, 'f1-score': 0.9049184210383726, 'support': 1000}}
+   ----------Save evaluation results under /home/wenshen/try_res/output_files/SC980/0907_193057
+   NumExpr defaulting to 8 threads.
+   Confusion matrix plot is '/home/wenshen/try_res/output_files/SC980/0907_193057/_confusion_matrix.pdf/png'
+
+   ```
+   
+    The confusion matrix is shown below. The x-axis is the true label and the y-axis is the predicted label.
+
+   ![](../images/_confusion_matrix.png)
+
+5. Prediction. Classification prediction is performed on the given `feature` dataset using the best model. The category and softmax value of each sample will be saved in a csv file.
+
+   ```python
+   automl.predict()
+   ```
+
+   Parts of logs are as follows:
+
+   ```javascript
+   ----------In Prediction stage
+   New DB Info: /home/wenshen/try_res/models/SC980/0907_193057/aefe36c0/aefe36c0_model/adjlist
+   start loading graph /home/wenshen/try_res/models/SC980/0907_193057/aefe36c0/aefe36c0_model/adjlist
+   finish loading.
+   number of nodes = 5129
+   number of edges = 20691
+   time of loading graph = 11.7617 ms
+   Restoring parameters from /home/wenshen/try_res/models/SC980/0907_193057/aefe36c0/aefe36c0_model/variables/variables
+   ----------Save prediction results in /home/wenshen/try_res/output_files/SC980/0907_193057/predict.csv
+   ```
+
+   As shown in the log, the predicted csv file will be generated and saved. The first column of the file is `predicted_result`, and the rest are softmax values of each sample.
+
+6. Explanation. Rank the importance of the features according to the final model trained in step 3 . The file corresponding to the variable name needs to be specified in the `explainer`.
+
+   ```python
+   automl.explain()
+   ```
+
+   Rank the importance of the model variables, and the logs are as follows:
+
+   ```javascript
+   ----------Initialize Shap class
+   Restoring parameters from experiments/models/mlp_demo/1225_113835/hyper_lr0.08500150000000001_layers_list_(128128)_keep_prob_0.8_output_nonlinear_None/best_model.ckpt-206
+   ----------Computing shap_values with 80  examples and 23361 features
+   importance plot is 'experiments/output_files/mlp_demo/1225_113835/_dot0_feature_importance_summary.pdf'
+   importance plot is 'experiments/output_files/mlp_demo/1225_113835/_dot1_feature_importance_summary.pdf'
+   features orders in all classes is saved in 'experiments/output_files/mlp_demo/1225_113835/_features_orders.csv'
+   importance plot for every classes is 'experiments/output_files/mlp_demo/1225_113835/class_0feature_importance_summary.pdf'
+   importance plot for every classes is 'experiments/output_files/mlp_demo/1225_113835/class_1feature_importance_summary.pdf'
+   importance plot is 'experiments/output_files/mlp_demo/1225_113835/_barTotal_feature_importance_summary.pdf'
+   shap_values every classes is 'experiments/output_files/mlp_demo/1225_113835/_class_0shap_values.csv'
+   shap_values every classes is 'experiments/output_files/mlp_demo/1225_113835/_class_1shap_values.csv'
+   ```
+   
+   Feature importance bar charts and dot charts and the total feature importance charts for each category are produced, as shown below:
+   
+   Importance map for all features:
+
+   ![](../images/_barTotal_feature_importance_summary.png)
+
+   Feature importance bar plot for class0:
+
+   ![](../images/class_0feature_importance_summary.png)
+
+   Feature importance bar plot for class1:
+
+   ![](../images/class_1feature_importance_summary.png)
+   
+   Feature importance bar plot for class2:
+
+   ![](../images/class_2feature_importance_summary.png)
+   
+   Feature importance bar plot for class3:
+
+   ![](../images/class_3feature_importance_summary.png)
+   
+   Feature importance bar plot for class4:
+
+   ![](../images/class_4feature_importance_summary.png)
+   
+   Feature importance bar plot for class5:
+
+   ![](../images/class_5feature_importance_summary.png)
+   
+   Feature importance bar plot for class6:
+
+   ![](../images/class_6feature_importance_summary.png)
+   
+   Feature importance bar plot for class7:
+
+   ![](../images/class_7feature_importance_summary.png)
+   
+   Feature importance bar plot for class8:
+
+   ![](../images/class_8feature_importance_summary.png)
+   
+   Feature importance bar plot for class9:
+
+   ![](../images/class_9feature_importance_summary.png)
+   
+   Feature importance dot plot for class0:
+
+   ![](../images/_dot0_feature_importance_summary.png)
+
+   Feature importance dot plot for class1:
+   
+   ![](../images/_dot1_feature_importance_summary.png)
+   
+   Feature importance dot plot for class2:
+
+   ![](../images/_dot2_feature_importance_summary.png)
+
+   Feature importance dot plot for class3:
+   
+   ![](../images/_dot3_feature_importance_summary.png)
+   
+   Feature importance dot plot for class4:
+
+   ![](../images/_dot4_feature_importance_summary.png)
+
+   Feature importance dot plot for class5:
+   
+   ![](../images/_dot5_feature_importance_summary.png)
+   
+   Feature importance dot plot for class6:
+
+   ![](../images/_dot6_feature_importance_summary.png)
+
+   Feature importance dot plot for class7:
+   
+   ![](../images/_dot7_feature_importance_summary.png)
+   
+   Feature importance dot plot for class8:
+
+   ![](../images/_dot8_feature_importance_summary.png)
+
+   Feature importance dot plot for class9:
+   
+   ![](../images/_dot9_feature_importance_summary.png)
+  
+## Appendix
+Paper of AutoGGN：[AutoGGN: A gene graph network AutoML tool for multi-omics research](https://doi.org/10.1016/j.ailsci.2021.100019)
+
